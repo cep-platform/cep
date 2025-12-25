@@ -3,22 +3,32 @@ from fastapi.responses import StreamingResponse
 from io import BytesIO
 import zipfile
 
-from cloudbox.nebula.nebula import Network
+from cloudbox.nebula.nebula import Network, _list_networks
 
 app = FastAPI()
-network = Network()
 
-network.create_host("lh",
-                    is_lighthouse=True,
-                    public_ip='fd42:f8f4:bee9:96d7:1266:6aff:fe96:4a1c',
-                    )
+@app.get("/listNetworks")
+def list_networks():
+    return _list_networks()
+
+
+@app.get("/createNetwork")
+def create_network():
+    network = Network()
+    return network.name
+
+
+@app.get("/listNetworks")
+def list_networks():
+    return _list_networks()
 
 
 @app.get("/createHost")
-def create_host():
+def create_host(network_name: str, host_name: str):
 
+    network = Network(name=network_name)
     # Simulated config files (you can load these from disk/db)
-    host = network.create_host('testhost', is_lighthouse=False)
+    host = network.create_host(host_name, is_lighthouse=False)
 
     # Create zip in memory
     zip_buffer = BytesIO()

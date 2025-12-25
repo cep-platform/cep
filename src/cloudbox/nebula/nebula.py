@@ -41,6 +41,23 @@ def generate_ula_prefix():
     return ipaddress.IPv6Network((prefix, 64))
 
 
+def load_ula_prefix(name: str):
+    # fd + 56 random bits = /64
+    prefix = name.replace("-", ":").replace("x", "/")
+    random_56bits = secrets.randbits(56)
+    prefix = (0xfd << 120) | (random_56bits << 64)
+    return ipaddress.IPv6Network((prefix, 64))
+
+
+def _list_networks(data_dir: Path = DATA_DIR):
+    return [path.name for path in data_dir.glob('????-????-????-????--x64')]
+
+
+def _list_hosts(network_name: str, data_dir: Path = DATA_DIR):
+    network_dir = data_dir / network_name
+    return [path.name for path in network_dir.glob('*')]
+
+
 @dataclass
 class Host():
     name: str
@@ -54,21 +71,38 @@ class Host():
     @property
     def config_files(self):
         config_files = {k: v for k, v in self.certs.items()}
-        config_files['config'] = self.config_file
+        config_files['config.yml'] = self.config_file
         return config_files
+
+    @dataclass()
+    def from_dir(cls, network: Network, path: Path):
+        config_file = path / 'config.yml'
+        with open(config_file, 'r') as f:
+            config = yaml.safe_load(f)
+        
+        
 
 
 class Network():
 
-    def __init__(self):
-        self.network = generate_ula_prefix()
-        self.name = self.network.compressed.replace(":", "-").replace("/", "--")
+    def __init__(self, name: str = None):
+        if name:
+            self.name = name
+            self.network = load_ula_prefix(name)
+            self.data_dir = DATA_DIR / self.name
+            self.data_dir.mkdir(exist_ok=True)
+            self.certs = list((self.data_dir / 'ca').glob('*'))
+            self.hosts = self.data_dir
+            print(self.certs)
 
-        self.data_dir = DATA_DIR / self.name
-        self.data_dir.mkdir(exist_ok=True)
+        else:
+            self.network = generate_ula_prefix()
+            self.name = self.network.compressed.replace(":", "-").replace("/", "x")
+            self.data_dir = DATA_DIR / self.name
+            self.data_dir.mkdir(exist_ok=True)
+            self.certs = self.create_ca()
 
-        self.hosts = {}
-        self.certs = self.create_ca()
+            self.hosts = {}
 
     def random_host_ip(self) -> ipaddress.IPv6Address:
         return ipaddress.IPv6Address(
@@ -113,8 +147,8 @@ class Network():
         subprocess.run(command, capture_output=True, text=True)
 
         cert_files_not_yet_in_target_dir = {
-                'key': next(Path.cwd().glob(f'{name}.key')),
-                'cert': next(Path.cwd().glob(f'{name}.crt')),
+                f'key': next(Path.cwd().glob(f'{name}.key')),
+                f'cert': next(Path.cwd().glob(f'{name}.crt')),
                 }
         cert_files = {
                 key: file.rename(host_cert_dir / file.name)
@@ -135,13 +169,15 @@ class Network():
         with open(template_path) as stream:
             config = yaml.safe_load(stream)
 
+        config['network_name'] = self.name
+        config['host_name'] = name
         config['pki'] = {key: str(val) for key, val in cert_files.items()}
         if is_lighthouse:
             config['lighthouse'] = {
                     'am_lighthouse': True
                     }
         else:
-            static_host_map = {str(host.ip): [host.public_ip]
+            static_host_map = {f'{str(host.ip)}': [f'[{host.public_ip}]:4242']
                                for host in self.hosts.values()
                                if host.is_lighthouse
                                }
@@ -156,7 +192,7 @@ class Network():
 
         config_path = self.data_dir / name / 'config.yml'
         with open(config_path, "w") as f:
-            yaml.dump(config, f, sort_keys=False)
+            yaml.safe_dump(config, f, sort_keys=False, default_style="'")
 
         return config_path
 
