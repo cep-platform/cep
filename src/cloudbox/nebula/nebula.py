@@ -18,6 +18,13 @@ DATA_DIR = Path(user_data_dir(APP_NAME))
 DATA_DIR.mkdir(exist_ok=True)
 LEASEFILE = DATA_DIR / Path('leases.json')
 
+# At minimum, store:
+#
+# cert fingerprint
+# public key
+# expiry
+# assigned IPv6(s)
+# groups
 
 def get_executable_path(name):
     with resources.as_file(resources.files("cloudbox.executables").joinpath(name)) as exe_path:

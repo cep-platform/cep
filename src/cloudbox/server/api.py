@@ -1,11 +1,44 @@
+from dataclasses import dataclass
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from io import BytesIO
+from ipaddress import IPv6Address
+from datetime import datetime
 import zipfile
 
 from cloudbox.nebula.nebula import Network, _list_networks
 
+# ca
+# network cidr
+# ipam
+# groups / roles
+# lighthouse registry
+# cert signing
+# policy enforcement
+
 app = FastAPI()
+
+    # ca
+    # network cidr
+    # ipam
+    # groups / roles
+    # lighthouse registry
+    # cert signing
+    # policy enforcement
+
+
+@dataclass
+class HostRecord:
+    network: Network
+    host_id: str            # internal UUID
+    public_key_fingerprint: str
+    nebula_ip: IPv6Address
+    groups: list[str]
+    is_lighthouse: bool
+    cert_expires_at: datetime
+    last_issued_at: datetime
+
+
 
 @app.get("/listNetworks")
 def list_networks():
