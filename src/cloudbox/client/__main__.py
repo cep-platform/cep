@@ -1,5 +1,6 @@
 import httpx
 import io
+import os
 import subprocess
 import typer
 import yaml
@@ -18,7 +19,7 @@ from cloudbox.utils import get_executable_path, get_template_path
 APP_NAME = "cloudbox_client"
 DATA_DIR = Path(user_data_dir(APP_NAME))
 DATA_DIR.mkdir(exist_ok=True)
-BASE_URL = "http://localhost:8000"
+BASE_URL = os.environ.get("CLOUDBOX_BASE_URL", "http://localhost:8000")
 client = httpx.Client(base_url=BASE_URL)
 app = typer.Typer()
 
