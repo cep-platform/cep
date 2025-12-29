@@ -35,6 +35,7 @@ def load_db() -> NetworkStore:
 
     with DB_PATH.open("r", encoding="utf-8") as f:
         raw = json.load(f)
+    print(raw)
 
     return NetworkStore.model_validate(raw)
 
@@ -76,8 +77,9 @@ def create_ca(name: str = 'my_ca', ca_dir: Path = CA_DIR):
 
     return ca_dir
 
-
-ca_dir = create_ca()
+_ca_crt_path = CA_DIR / "ca.crt"
+if not _ca_crt_path.exists():
+    ca_dir = create_ca()
 
 
 @app.get("/listNetworks")

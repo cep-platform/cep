@@ -141,7 +141,7 @@ def create_host(network_name: str,
         lighthouse_mapping_response.raise_for_status()
         static_host_map = lighthouse_mapping_response.json()
         config['static_host_map'] = static_host_map
-        config['lighthouse'] = {'am_lighthouse': True,
+        config['lighthouse'] = {'am_lighthouse': False,
                                 'interval': 60,
                                 'hosts': list(static_host_map.keys())}
 

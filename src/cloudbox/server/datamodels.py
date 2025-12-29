@@ -53,7 +53,7 @@ class HostRecord(BaseModel):
 
     @field_serializer("ip")
     def serialize_ip(self, ip: ipaddress.IPv6Address) -> str:
-        return str(ip)
+        return str(ip) if ip else ip
 
     @field_validator("ip", mode="before")
     @classmethod
@@ -64,7 +64,7 @@ class HostRecord(BaseModel):
 
     @field_serializer("public_ip")
     def serialize_public_ip(self, public_ip: ipaddress.IPv6Address) -> str:
-        return str(public_ip)
+        return str(public_ip) if public_ip else public_ip
 
     @field_validator("public_ip", mode="before")
     @classmethod
