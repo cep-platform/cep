@@ -1,3 +1,4 @@
+import sys
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, FileResponse
@@ -9,7 +10,10 @@ import json
 import secrets
 import subprocess
 import tempfile
+import typer
 import zipfile
+
+import uvicorn
 
 from cloudbox.utils import get_executable_path
 from cloudbox.server.datamodels import (
@@ -26,26 +30,31 @@ DATA_DIR.mkdir(exist_ok=True)
 CA_DIR = DATA_DIR / 'ca'
 CA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / 'db.json'
+CLOUDBOX_SERVER_CFG_PATH = Path('.cloudboxservercfg')
 
 
 security = HTTPBearer()
 
 
-def verify_token(
-    credentials: HTTPAuthorizationCredentials = Depends(security),
-):
-    token = credentials.credentials
+if CLOUDBOX_SERVER_CFG_PATH.exists():
+    with open(CLOUDBOX_SERVER_CFG_PATH, 'r') as f:
+        SERVER_TOKEN = f.read()
 
-    if token != "test":
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid or missing token",
-        )
+    def verify_token(
+        credentials: HTTPAuthorizationCredentials = Depends(security),
+    ):
+        token = credentials.credentials
 
-
-app = FastAPI(
-        dependencies=[Depends(verify_token)]
-        )
+        if token != SERVER_TOKEN:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or missing token",
+            )
+    app = FastAPI(
+            dependencies=[Depends(verify_token)]
+            )
+else:
+    app = FastAPI()
 
 
 def load_db() -> NetworkStore:
@@ -95,6 +104,7 @@ def create_ca(name: str = 'my_ca', ca_dir: Path = CA_DIR):
         file.rename(ca_dir / file.name)
 
     return ca_dir
+
 
 _ca_crt_path = CA_DIR / "ca.crt"
 if not _ca_crt_path.exists():
@@ -211,3 +221,31 @@ def sign_cert(request: CertificateRequest):
         media_type="application/zip",
         filename="nebula-certs.zip",
     )
+
+
+typer_app = typer.Typer(help="cloudbox-server")
+
+
+@typer_app.command()
+def set_auth_token(
+    token: str = typer.Option(..., prompt=True, hide_input=True),
+):
+    """
+    Store an authentication token for Cloudbox.
+    """
+    with open(CLOUDBOX_SERVER_CFG_PATH, 'w') as f:
+        f.write(token)
+
+
+@typer_app.command()
+def run():
+    uvicorn.run(
+        "cloudbox.server.api:app",  # module:variable
+        host="0.0.0.0",
+        port=8000,
+        reload=True,     # dev only
+    )
+
+
+def main():
+    typer_app()

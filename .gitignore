@@ -10,3 +10,4 @@ wheels/
 .venv
 
 .cloudboxcfg
+.cloudboxservercfg
