@@ -4,9 +4,10 @@ import json
 import os
 import subprocess
 import typer
-import yaml
 import zipfile
 from pathlib import Path
+
+import yaml
 from platformdirs import user_data_dir
 
 from cloudbox.server.datamodels import (

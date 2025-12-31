@@ -1,19 +1,17 @@
-import sys
-from fastapi import FastAPI, Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import StreamingResponse, FileResponse
-from io import BytesIO
-from ipaddress import IPv6Address, IPv6Network
-from pathlib import Path
-from platformdirs import user_data_dir
 import json
 import secrets
 import subprocess
 import tempfile
 import typer
 import zipfile
+from ipaddress import IPv6Address, IPv6Network
+from pathlib import Path
 
 import uvicorn
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import FileResponse
+from platformdirs import user_data_dir
 
 from cloudbox.utils import get_executable_path
 from cloudbox.server.datamodels import (
