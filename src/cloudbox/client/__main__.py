@@ -1,5 +1,6 @@
 import httpx
 import io
+import json
 import os
 import subprocess
 import typer
@@ -19,9 +20,35 @@ from cloudbox.utils import get_executable_path, get_template_path
 APP_NAME = "cloudbox_client"
 DATA_DIR = Path(user_data_dir(APP_NAME))
 DATA_DIR.mkdir(exist_ok=True)
-BASE_URL = os.environ.get("CLOUDBOX_BASE_URL", "http://localhost:8000")
-client = httpx.Client(base_url=BASE_URL)
+CLOUDBOXCFG_PATH = Path('.cloudboxcfg')
+
+if CLOUDBOXCFG_PATH.exists():
+    with open(CLOUDBOXCFG_PATH, 'r') as f:
+        cloudbox_cfg = json.load(f)
+else:
+    cloudbox_cfg = {}
+
+BASE_URL = os.environ.get("CLOUDBOX_BASE_URL") or cloudbox_cfg.get('base_url', None)
+TOKEN = os.environ.get("CLOUDBOX_TOKEN") or cloudbox_cfg.get('token', None)
+
+client = httpx.Client(
+        base_url=BASE_URL,
+        headers={
+            "Authorization": f"Bearer {TOKEN}",
+        },
+        )
 app = typer.Typer()
+
+
+@app.command()
+def auth():
+    cloudbox_server_url = input("cloudbox server instance url: ")
+    token = input("token: ")
+    with open('.cloudboxcfg', 'w') as f:
+        json.dump({
+            'base_url': cloudbox_server_url,
+            'token': token,
+            }, f)
 
 
 @app.command()

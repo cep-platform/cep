@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import StreamingResponse, FileResponse
 from io import BytesIO
 from ipaddress import IPv6Address, IPv6Network
@@ -26,7 +27,25 @@ CA_DIR = DATA_DIR / 'ca'
 CA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / 'db.json'
 
-app = FastAPI()
+
+security = HTTPBearer()
+
+
+def verify_token(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+):
+    token = credentials.credentials
+
+    if token != "test":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing token",
+        )
+
+
+app = FastAPI(
+        dependencies=[Depends(verify_token)]
+        )
 
 
 def load_db() -> NetworkStore:
