@@ -84,7 +84,7 @@ class HostRequest(BaseModel):
     name: str
     network_name: str
     is_lighthouse: bool
-    public_ip: Optional[ipaddress.IPv6Address] = None
+    public_ip: Optional[Union[ipaddress.IPv6Address, ipaddress.IPv4Address]] = None
 
     @model_validator(mode="after")
     def validate_lighthouse_ip(self):
