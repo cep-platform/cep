@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
-from typing import Optional
+from typing import Optional, Union
 
 from pydantic import (
         BaseModel,
@@ -41,7 +41,7 @@ class HostRecord(BaseModel):
     groups: list[str]
     is_lighthouse: bool
     public_key: Optional[str] = None
-    public_ip: Optional[ipaddress.IPv6Address] = None
+    public_ip: Optional[Union[ipaddress.IPv6Address, ipaddress.IPv4Address]] = None
 
     @model_validator(mode="after")
     def validate_lighthouse_ip(self):
@@ -59,18 +59,18 @@ class HostRecord(BaseModel):
     @classmethod
     def deserialize_ip(cls, value):
         if isinstance(value, str):
-            return ipaddress.IPv6Address(value)
+            return ipaddress.ip_address(value)
         return value
 
     @field_serializer("public_ip")
-    def serialize_public_ip(self, public_ip: ipaddress.IPv6Address) -> str:
+    def serialize_public_ip(self, public_ip: Union[ipaddress.IPv6Address, ipaddress.IPv4Address]) -> str:
         return str(public_ip) if public_ip else public_ip
 
     @field_validator("public_ip", mode="before")
     @classmethod
     def deserialize_public_ip(cls, value):
         if isinstance(value, str):
-            return ipaddress.IPv6Address(value)
+            return ipaddress.ip_address(value)
         return value
 
 

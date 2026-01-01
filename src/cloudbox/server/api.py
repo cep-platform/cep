@@ -141,7 +141,7 @@ def get_lighthouse_mapping(network_name: str) -> dict:
     network_record = network_store.networks.get(network_name, None)
 
     lighthouse_mapping = {
-            str(host.ip): f"[{str(host.public_ip)}]:4242"
+            str(host.ip): f"[{str(host.public_ip)}]:4242" if isinstance(host.public_ip, IPv6Address) else f"{str(host.public_ip)}:4242"
             for host in network_record.hosts.values()
             if host.is_lighthouse
             }
