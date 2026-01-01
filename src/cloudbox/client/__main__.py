@@ -29,15 +29,18 @@ if CLOUDBOXCFG_PATH.exists():
 else:
     cloudbox_cfg = {}
 
-BASE_URL = os.environ.get("CLOUDBOX_BASE_URL") or cloudbox_cfg.get('base_url', None)
+BASE_URL = os.environ.get("CLOUDBOX_BASE_URL") or cloudbox_cfg.get('base_url', "http://localhost:8000")
 TOKEN = os.environ.get("CLOUDBOX_TOKEN") or cloudbox_cfg.get('token', None)
 
-client = httpx.Client(
-        base_url=BASE_URL,
-        headers={
-            "Authorization": f"Bearer {TOKEN}",
-        },
-        )
+if TOKEN:
+    client = httpx.Client(
+            base_url=BASE_URL,
+            headers={
+                "Authorization": f"Bearer {TOKEN}",
+                },
+            )
+else:
+    client = httpx.Client(base_url=BASE_URL)
 app = typer.Typer()
 
 
