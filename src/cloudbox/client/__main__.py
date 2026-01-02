@@ -8,8 +8,10 @@ import zipfile
 from pathlib import Path
 
 import yaml
+from rich import print
 from platformdirs import user_data_dir
 
+from cloudbox.client.dns import NebulaDNS
 from cloudbox.server.datamodels import (
         CertificateRequest,
         HostRequest,
@@ -135,6 +137,7 @@ def create_host(network_name: str,
             json=host_request.model_dump(mode="json")
             )
     host_response.raise_for_status()
+    ip = host_response.json()['ip']
 
     certificate_request = CertificateRequest(
             network_name=network_name,
@@ -163,7 +166,19 @@ def create_host(network_name: str,
     config['pki'] = pki
 
     if am_lighthouse:
-        config['lighthouse'] = {'am_lighthouse': True}
+        config['lighthouse'] = {'am_lighthouse': True,
+                                'serve_dns': True,
+                                'dns': {
+                                    'host': f'{ip}',
+                                    'port': 53,
+                                    }
+                                }
+        config['firewall']['inbound'].append({
+            'port': 53,
+            'proto': 'udp',
+            'host': 'any',
+            })
+        print(config)
     else:
         lighthouse_mapping_response = client.get(
                 "/getLighthouseMapping",
@@ -184,12 +199,20 @@ def create_host(network_name: str,
 def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
     nebula_executable_path = get_executable_path('nebula')
     config_path = data_dir / network_name / host_name / 'config.yml'
+    with open(config_path, 'r') as f:
+        config = yaml.safe_load(f)
+    lighthouses = config['lighthouse']['hosts']
+    # NebulaDNS(
+            #     nebula_iface="nebula1",
+            #     nebula_dns_ip=lighthouses,
+            # ).enable()
     command = [
-        nebula_executable_path,
-        '-config', str(config_path)
-        ]
+            nebula_executable_path,
+            '-config', str(config_path)
+            ]
     print(f"Connecting to {network_name} as {host_name}")
     subprocess.run(command, check=True)
+    # NebulaDNS().disable()
 
 
 if __name__ == "__main__":
