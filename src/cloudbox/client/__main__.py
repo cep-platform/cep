@@ -199,20 +199,24 @@ def create_host(network_name: str,
 def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
     nebula_executable_path = get_executable_path('nebula')
     config_path = data_dir / network_name / host_name / 'config.yml'
+    am_lighthouse = config['lighthouse']['am_lighthouse']
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
-    lighthouses = config['lighthouse']['hosts']
-    # NebulaDNS(
-            #     nebula_iface="nebula1",
-            #     nebula_dns_ip=lighthouses,
-            # ).enable()
+    if not am_lighthouse:
+        lighthouses = config['lighthouse']['hosts']
+        # NebulaDNS(
+                #     nebula_iface="nebula1",
+                #     nebula_dns_ip=lighthouses,
+                # ).enable()
     command = [
             nebula_executable_path,
             '-config', str(config_path)
             ]
     print(f"Connecting to {network_name} as {host_name}")
     subprocess.run(command, check=True)
-    # NebulaDNS().disable()
+    if not am_lighthouse:
+        pass
+        # NebulaDNS().disable()
 
 
 if __name__ == "__main__":
