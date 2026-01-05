@@ -65,21 +65,17 @@ def list_networks(data_dir: Path = DATA_DIR):
 
 
 @app.command()
-def create_network():
-    resp = client.get("/createNetwork")
+def create_network(name: str):
+    resp = client.get("/createNetwork", params={'name': name})
     resp.raise_for_status()
-    resp_data = resp.json()
 
-    network_record = NetworkRecord(
-            subnet=resp_data['subnet'],
-            hosts=resp_data['hosts']
-            )
-    print(network_record.name)
+    print(resp.json()['name'])
 
 
 @app.command()
 def list_hosts(network_name: str, data_dir: Path = DATA_DIR):
     network_dir = data_dir / network_name
+    print(network_dir)
     print('\n'.join([
         path.name
         for path in network_dir.glob('*')
@@ -198,9 +194,19 @@ def create_host(network_name: str,
 @app.command()
 def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
     nebula_executable_path = get_executable_path('nebula')
-    config_path = data_dir / network_name / host_name / 'config.yml'
+
+    network_path = data_dir / network_name
+    if not network_path.exists():
+        raise ValueError(f'Network {network_name} does not exist')
+
+    host_path = network_path / host_name
+    if not host_path.exists():
+        raise ValueError(f'Host {host_name} does not exist in Network {network_name}')
+
+    config_path = host_path / 'config.yml'
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
+
     am_lighthouse = config['lighthouse']['am_lighthouse']
     if not am_lighthouse:
         lighthouses = config['lighthouse']['hosts']

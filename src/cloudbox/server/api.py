@@ -61,7 +61,6 @@ def load_db() -> NetworkStore:
 
     with DB_PATH.open("r", encoding="utf-8") as f:
         raw = json.load(f)
-    print(raw)
 
     return NetworkStore.model_validate(raw)
 
@@ -104,23 +103,20 @@ def create_ca(name: str = 'my_ca', ca_dir: Path = CA_DIR):
     return ca_dir
 
 
-_ca_crt_path = CA_DIR / "ca.crt"
-if not _ca_crt_path.exists():
-    ca_dir = create_ca()
-
-
 @app.get("/listNetworks")
 def list_networks() -> list[str]:
-    return [path.name for path in DATA_DIR.glob('*-*-*-*--x64')]
+    return [path.name for path in DATA_DIR.glob('*') if path.name != 'db.json']
 
 
 @app.get("/createNetwork")
-def create_network() -> NetworkRecord:
+def create_network(name: str) -> NetworkRecord:
     subnet = generate_ula_prefix()
-    network_record = NetworkRecord(subnet=subnet, hosts={})
+    network_record = NetworkRecord(name=name, subnet=subnet, hosts={})
 
     network_data_dir = DATA_DIR / network_record.name
     network_data_dir.mkdir(exist_ok=True)
+
+    create_ca(name=name, ca_dir=network_data_dir)
 
     network_store = load_db()
     network_store.networks[network_record.name] = network_record
@@ -196,16 +192,17 @@ def sign_cert(request: CertificateRequest):
     with open(pub_key_path, 'w') as f:
         f.write(request.pub_key)
 
-    ca_cert_path = CA_DIR / 'ca.crt'
+    ca_cert_path = DATA_DIR / network_name / 'ca.crt'
+    ca_key_path = DATA_DIR / network_name / 'ca.key'
     nebula_cert_executable_path = get_executable_path('nebula-cert')
     subprocess.run([
         nebula_cert_executable_path,
         'sign',
         '-in-pub', pub_key_path,
-        '-name', host_name,
+        '-name', f'{host_name}.{network_name}',
         '-ip', ip,
         '-ca-crt', ca_cert_path,
-        '-ca-key', CA_DIR / 'ca.key',
+        '-ca-key', ca_key_path,
         '-out-crt', cert_path,
         ], capture_output=True, text=True)
 
