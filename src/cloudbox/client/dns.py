@@ -9,8 +9,8 @@ class NebulaDNS:
     def __init__(
         self,
         nebula_dns_ips: List[str],
+        domain: str,
         nebula_iface: str = "nebula1",
-        domain: str | None = None,
     ):
         """
         nebula_dns_ips : list of Nebula DNS IPs (multiple lighthouses)
@@ -52,17 +52,15 @@ class NebulaDNS:
     # --------------------
 
     def _enable_linux(self):
-        domain = self.domain or "~."
-
         self._run(
             ["resolvectl", "dns", self.iface, *self.nebula_dns_ips]
         )
         self._run(
-            ["resolvectl", "domains", self.iface, domain]
+            ["resolvectl", "domain", self.iface, f'~{self.domain}']
         )
 
     def _disable_linux(self):
-        self._run(["resolvectl", "revert", self.iface])
+        pass
 
     # --------------------
     # macOS (scoped resolver)

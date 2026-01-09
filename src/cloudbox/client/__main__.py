@@ -3,6 +3,7 @@ import io
 import json
 import os
 import subprocess
+import time
 import typer
 import zipfile
 from pathlib import Path
@@ -15,7 +16,6 @@ from cloudbox.client.dns import NebulaDNS
 from cloudbox.server.datamodels import (
         CertificateRequest,
         HostRequest,
-        NetworkRecord,
         )
 from cloudbox.utils import get_executable_path, get_template_path
 
@@ -31,7 +31,11 @@ if CLOUDBOXCFG_PATH.exists():
 else:
     cloudbox_cfg = {}
 
-BASE_URL = os.environ.get("CLOUDBOX_BASE_URL") or cloudbox_cfg.get('base_url', "http://localhost:8000")
+BASE_URL = (
+        os.environ.get("CLOUDBOX_BASE_URL")
+        or
+        cloudbox_cfg.get('base_url', "http://localhost:8000")
+        )
 TOKEN = os.environ.get("CLOUDBOX_TOKEN") or cloudbox_cfg.get('token', None)
 
 if TOKEN:
@@ -75,7 +79,6 @@ def create_network(name: str):
 @app.command()
 def list_hosts(network_name: str, data_dir: Path = DATA_DIR):
     network_dir = data_dir / network_name
-    print(network_dir)
     print('\n'.join([
         path.name
         for path in network_dir.glob('*')
@@ -191,38 +194,76 @@ def create_host(network_name: str,
         yaml.safe_dump(config, f)
 
 
+def wait_for_interface(iface: str, timeout: float = 10.0):
+    start = time.time()
+    while time.time() - start < timeout:
+        try:
+            subprocess.run(
+                    ["ip", "link", "show", iface],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=True,
+                    )
+            return True
+        except subprocess.CalledProcessError:
+            time.sleep(0.2)
+    return False
+
+
 @app.command()
 def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
-    nebula_executable_path = get_executable_path('nebula')
+    nebula_executable_path = get_executable_path("nebula")
+    nebula_cert_executable_path = get_executable_path("nebula-cert")
+    config_path = data_dir / network_name / host_name / "config.yml"
 
-    network_path = data_dir / network_name
-    if not network_path.exists():
-        raise ValueError(f'Network {network_name} does not exist')
-
-    host_path = network_path / host_name
-    if not host_path.exists():
-        raise ValueError(f'Host {host_name} does not exist in Network {network_name}')
-
-    config_path = host_path / 'config.yml'
-    with open(config_path, 'r') as f:
+    with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    am_lighthouse = config['lighthouse']['am_lighthouse']
-    if not am_lighthouse:
-        lighthouses = config['lighthouse']['hosts']
-        # NebulaDNS(
-                #     nebula_iface="nebula1",
-                #     nebula_dns_ip=lighthouses,
-                # ).enable()
+    am_lighthouse = config["lighthouse"]["am_lighthouse"]
+    cert_path = config['pki']['cert']
+
+
+    result = subprocess.run([
+        nebula_cert_executable_path,
+        'print',
+        '-path', cert_path,
+        ], capture_output=True, text=True)
+    tld = json.loads(result.stdout)['details']['name'].split('.')[-1]
+
     command = [
             nebula_executable_path,
-            '-config', str(config_path)
+            "-config", str(config_path),
             ]
+
     print(f"Connecting to {network_name} as {host_name}")
-    subprocess.run(command, check=True)
-    if not am_lighthouse:
-        pass
-        # NebulaDNS().disable()
+
+    proc = subprocess.Popen(command)
+
+    dns = None
+    try:
+        if not am_lighthouse:
+            if not wait_for_interface("nebula1"):
+                raise RuntimeError("nebula interface did not appear")
+
+            lighthouses = config["lighthouse"]["hosts"]
+
+            dns = NebulaDNS(
+                    nebula_iface="nebula1",
+                    nebula_dns_ips=lighthouses,
+                    domain=tld,
+                    )
+            dns.enable()
+
+        # Wait for nebula to exit
+        proc.wait()
+
+    finally:
+        if dns:
+            dns.disable()
+
+        if proc.poll() is None:
+            proc.terminate()
+            proc.wait()
 
 
 if __name__ == "__main__":

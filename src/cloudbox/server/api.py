@@ -25,8 +25,6 @@ from cloudbox.server.datamodels import (
 APP_NAME = "cloudbox"
 DATA_DIR = Path(user_data_dir(APP_NAME))
 DATA_DIR.mkdir(exist_ok=True)
-CA_DIR = DATA_DIR / 'ca'
-CA_DIR.mkdir(parents=True, exist_ok=True)
 DB_PATH = DATA_DIR / 'db.json'
 CLOUDBOX_SERVER_CFG_PATH = Path('.cloudboxservercfg')
 
@@ -87,7 +85,7 @@ def random_host_ip(prefix) -> IPv6Address:
             )
 
 
-def create_ca(name: str = 'my_ca', ca_dir: Path = CA_DIR):
+def create_ca(name: str, ca_dir: Path):
     nebula_cert_executable_path = get_executable_path('nebula-cert')
     subprocess.run([
         nebula_cert_executable_path,
