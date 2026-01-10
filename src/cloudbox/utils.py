@@ -33,6 +33,22 @@ NEBULA_DOWNLOAD_CONFIG = {
 }
 
 
+def get_platform():
+    machine = platform.machine().lower()
+    system = platform.system().lower()
+
+    if system == "linux" and machine in ("x86_64", "amd64"):
+        platform_name = "linux-amd64"
+    elif system == "darwin" and machine in ("arm64", "aarch64"):
+        platform_name = "darwin-arm64"
+    elif system == "darwin":
+        platform_name = "darwin-amd64"
+    elif system == "windows":
+        platform_name = "windows-amd64.exe"
+
+    return platform_name
+
+
 def extract_archive(
         archive_path: Path,
         archive_type: str,
@@ -51,21 +67,12 @@ def extract_archive(
 
 
 def download_nebula():
-    system = platform.system().lower()
-    machine = platform.machine().lower()
 
-    if system == "linux" and machine in ("x86_64", "amd64"):
-        platform_name = "linux-amd64"
-    elif system == "darwin" and machine in ("arm64", "aarch64"):
-        platform_name = "darwin-arm64"
-    elif system == "darwin":
-        platform_name = "darwin-amd64"
-    elif system == "windows":
-        platform_name = "windows-amd64.exe"
+    platform_name = get_platform()
 
     nebula_download_config = NEBULA_DOWNLOAD_CONFIG.get(platform_name, None)
     if nebula_download_config is None:
-        raise RuntimeError(f"Unsupported platform: {system}/{machine}")
+        raise RuntimeError(f"Unsupported platform: {platform_name}")
 
     nebula_path = CACHE_DIR / "nebula"
     nebula_cert_path = CACHE_DIR / "nebula-cert"

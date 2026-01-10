@@ -8,6 +8,7 @@ import typer
 import zipfile
 from pathlib import Path
 
+import psutil
 import yaml
 from rich import print
 from platformdirs import user_data_dir
@@ -177,7 +178,6 @@ def create_host(network_name: str,
             'proto': 'udp',
             'host': 'any',
             })
-        print(config)
     else:
         lighthouse_mapping_response = client.get(
                 "/getLighthouseMapping",
@@ -194,19 +194,19 @@ def create_host(network_name: str,
         yaml.safe_dump(config, f)
 
 
-def wait_for_interface(iface: str, timeout: float = 10.0):
+def ip_exists(ip):
+    for if_addrs in psutil.net_if_addrs().values():
+        for addr in if_addrs:
+            if addr.address == ip:
+                return True
+    return False
+
+
+def wait_for_interface(ip_address: str, timeout: float = 10.0):
     start = time.time()
     while time.time() - start < timeout:
-        try:
-            subprocess.run(
-                    ["ip", "link", "show", iface],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=True,
-                    )
+        if ip_exists(ip=ip_address):
             return True
-        except subprocess.CalledProcessError:
-            time.sleep(0.2)
     return False
 
 
@@ -229,6 +229,7 @@ def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
         '-path', cert_path,
         ], capture_output=True, text=True)
     tld = json.loads(result.stdout)['details']['name'].split('.')[-1]
+    ip = json.loads(result.stdout)['details']['networks'][0].split('/')[0]
 
     command = [
             nebula_executable_path,
@@ -242,7 +243,7 @@ def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
     dns = None
     try:
         if not am_lighthouse:
-            if not wait_for_interface("nebula1"):
+            if not wait_for_interface(ip):
                 raise RuntimeError("nebula interface did not appear")
 
             lighthouses = config["lighthouse"]["hosts"]
