@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse
 from platformdirs import user_data_dir
 
 from cloudbox.utils import get_executable_path
-from cloudbox.server.datamodels import (
+from cloudbox.datamodels import (
         NetworkRecord,
         NetworkStore,
         HostRecord,
@@ -29,28 +29,29 @@ DB_PATH = DATA_DIR / 'db.json'
 CLOUDBOX_SERVER_CFG_PATH = Path('.cloudboxservercfg')
 
 
-security = HTTPBearer()
+def instantiate_main_app():
+    if CLOUDBOX_SERVER_CFG_PATH.exists():
+        with open(CLOUDBOX_SERVER_CFG_PATH, 'r') as f:
+            SERVER_TOKEN = f.read()
+
+        def verify_token(
+            credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+        ):
+            token = credentials.credentials
+
+            if token != SERVER_TOKEN:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or missing token",
+                )
+        return FastAPI(
+                dependencies=[Depends(verify_token)]
+                )
+    else:
+        return FastAPI()
 
 
-if CLOUDBOX_SERVER_CFG_PATH.exists():
-    with open(CLOUDBOX_SERVER_CFG_PATH, 'r') as f:
-        SERVER_TOKEN = f.read()
-
-    def verify_token(
-        credentials: HTTPAuthorizationCredentials = Depends(security),
-    ):
-        token = credentials.credentials
-
-        if token != SERVER_TOKEN:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid or missing token",
-            )
-    app = FastAPI(
-            dependencies=[Depends(verify_token)]
-            )
-else:
-    app = FastAPI()
+app = instantiate_main_app()
 
 
 def load_db() -> NetworkStore:

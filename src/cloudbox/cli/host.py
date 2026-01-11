@@ -14,7 +14,7 @@ from rich import print
 from platformdirs import user_data_dir
 
 from cloudbox.cli.dns import NebulaDNS
-from cloudbox.server.datamodels import (
+from cloudbox.datamodels import (
         CertificateRequest,
         HostRequest,
         )
