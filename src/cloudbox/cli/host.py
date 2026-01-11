@@ -11,7 +11,6 @@ from pathlib import Path
 import psutil
 import yaml
 from rich import print
-from platformdirs import user_data_dir
 
 from cloudbox.cli.dns import NebulaDNS
 from cloudbox.datamodels import (
@@ -19,12 +18,11 @@ from cloudbox.datamodels import (
         HostRequest,
         )
 from cloudbox.utils import get_executable_path, get_template_path
+from cloudbox.cli.utils import (
+        CLOUDBOXCFG_PATH,
+        CLI_DATA_DIR,
+        )
 
-
-APP_NAME = "cloudbox_cli"
-DATA_DIR = Path(user_data_dir(APP_NAME))
-DATA_DIR.mkdir(exist_ok=True)
-CLOUDBOXCFG_PATH = Path('.cloudboxcfg')
 
 if CLOUDBOXCFG_PATH.exists():
     with open(CLOUDBOXCFG_PATH, 'r') as f:
@@ -48,11 +46,12 @@ if TOKEN:
             )
 else:
     client = httpx.Client(base_url=BASE_URL)
+
 host_app = typer.Typer()
 
 
 @host_app.command("list")
-def _list(network_name: str, data_dir: Path = DATA_DIR):
+def _list(network_name: str, data_dir: Path = CLI_DATA_DIR):
     network_dir = data_dir / network_name
     print('\n'.join([
         path.name
@@ -60,17 +59,12 @@ def _list(network_name: str, data_dir: Path = DATA_DIR):
         ]))
 
 
-def get_host_ip(network_name: str):
-    resp = client.get("/getHostIp", params=network_name)
-    return resp.json()
-
-
 @host_app.command()
 def create(network_name: str,
            host_name: str,
            am_lighthouse: bool = False,
            public_ip: str = None,
-           output_dir: Path = DATA_DIR
+           output_dir: Path = CLI_DATA_DIR
            ) -> list[Path]:
 
     if am_lighthouse and not public_ip:
@@ -78,7 +72,7 @@ def create(network_name: str,
 
     nebula_cert_executable_path = get_executable_path('nebula-cert')
 
-    network_path = DATA_DIR / network_name
+    network_path = CLI_DATA_DIR / network_name
     network_path.mkdir(exist_ok=True)
 
     host_data_path = network_path / host_name
@@ -107,7 +101,7 @@ def create(network_name: str,
             public_ip=public_ip,
             )
     host_response = client.post(
-            "/createHost",
+            "/host/create",
             json=host_request.model_dump(mode="json")
             )
     host_response.raise_for_status()
@@ -120,7 +114,7 @@ def create(network_name: str,
             )
 
     cert_response = client.post(
-            "/signCert",
+            "/host/sign",
             json=certificate_request.model_dump(mode='json')
             )
     cert_response.raise_for_status()
@@ -154,7 +148,7 @@ def create(network_name: str,
             })
     else:
         lighthouse_mapping_response = client.get(
-                "/getLighthouseMapping",
+                "/network/lighthouses",
                 params={'network_name': network_name}
                 )
         lighthouse_mapping_response.raise_for_status()
@@ -185,7 +179,7 @@ def wait_for_interface(ip_address: str, timeout: float = 10.0):
 
 
 @host_app.command()
-def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
+def connect(network_name: str, host_name: str, data_dir: Path = CLI_DATA_DIR):
     nebula_executable_path = get_executable_path("nebula")
     nebula_cert_executable_path = get_executable_path("nebula-cert")
     config_path = data_dir / network_name / host_name / "config.yml"

@@ -12,10 +12,12 @@ from platformdirs import user_data_dir
 
 
 APP_NAME = "cloudbox"
-DB_PATH = Path(user_data_dir(APP_NAME)) / 'db.json'
+DATA_DIR = Path(user_data_dir(APP_NAME))
+DATA_DIR.mkdir(exist_ok=True)
 CACHE_DIR = Path.home() / ".cache" / "nebula"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 
+CLOUDBOX_SERVER_CFG_PATH = Path('.cloudboxservercfg')
 
 NEBULA_VERSION = "1.10.0"
 

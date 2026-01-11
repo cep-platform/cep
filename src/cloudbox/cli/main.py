@@ -4,16 +4,11 @@ import os
 import typer
 from pathlib import Path
 
-from platformdirs import user_data_dir
-
 from cloudbox.cli.network import network_app
 from cloudbox.cli.host import host_app
 from cloudbox.cli.server import server_app
 
 
-APP_NAME = "cloudbox_cli"
-DATA_DIR = Path(user_data_dir(APP_NAME))
-DATA_DIR.mkdir(exist_ok=True)
 CLOUDBOXCFG_PATH = Path('.cloudboxcfg')
 
 if CLOUDBOXCFG_PATH.exists():

@@ -2,16 +2,11 @@ import httpx
 import json
 import os
 import typer
-from pathlib import Path
 
 from rich import print
-from platformdirs import user_data_dir
 
+from cloudbox.cli.utils import CLOUDBOXCFG_PATH
 
-APP_NAME = "cloudbox_cli"
-DATA_DIR = Path(user_data_dir(APP_NAME))
-DATA_DIR.mkdir(exist_ok=True)
-CLOUDBOXCFG_PATH = Path('.cloudboxcfg')
 
 if CLOUDBOXCFG_PATH.exists():
     with open(CLOUDBOXCFG_PATH, 'r') as f:
@@ -40,8 +35,8 @@ network_app = typer.Typer()
 
 
 @network_app.command("list")
-def _list(data_dir: Path = DATA_DIR):
-    resp = client.get("/listNetworks")
+def _list():
+    resp = client.get("/network/list")
     resp.raise_for_status()
     networks = resp.json()
     if networks:
@@ -50,5 +45,5 @@ def _list(data_dir: Path = DATA_DIR):
 
 @network_app.command()
 def create(name: str):
-    resp = client.get("/createNetwork", params={'name': name})
+    resp = client.get("/network/create", params={'name': name})
     resp.raise_for_status()
