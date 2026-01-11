@@ -16,7 +16,7 @@ dependencies = [
 
 [project.scripts]
 cloudbox = "cloudbox.cli.main:app"
-cloudbox-server = "cloudbox.server.api:main"
+cloudbox-server = "cloudbox.server.main:main"
 
 [tool.setuptools.package-data]
 cloudbox = ["templates/*.yaml", "executables/*"]

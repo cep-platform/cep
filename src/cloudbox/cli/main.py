@@ -8,6 +8,7 @@ from platformdirs import user_data_dir
 
 from cloudbox.cli.network import network_app
 from cloudbox.cli.host import host_app
+from cloudbox.cli.server import server_app
 
 
 APP_NAME = "cloudbox_cli"
@@ -41,6 +42,7 @@ else:
 app = typer.Typer()
 app.add_typer(network_app, name="network")
 app.add_typer(host_app, name="host")
+app.add_typer(server_app, name="server")
 
 
 @app.command()

@@ -2,12 +2,10 @@ import json
 import secrets
 import subprocess
 import tempfile
-import typer
 import zipfile
 from ipaddress import IPv6Address, IPv6Network
 from pathlib import Path
 
-import uvicorn
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import FileResponse
@@ -215,31 +213,3 @@ def sign_cert(request: CertificateRequest):
         media_type="application/zip",
         filename="nebula-certs.zip",
     )
-
-
-typer_app = typer.Typer(help="cloudbox-server")
-
-
-@typer_app.command()
-def set_auth_token(
-    token: str = typer.Option(..., prompt=True, hide_input=True),
-):
-    """
-    Store an authentication token for Cloudbox.
-    """
-    with open(CLOUDBOX_SERVER_CFG_PATH, 'w') as f:
-        f.write(token)
-
-
-@typer_app.command()
-def run():
-    uvicorn.run(
-        "cloudbox.server.api:app",  # module:variable
-        host="0.0.0.0",
-        port=8000,
-        reload=True,     # dev only
-    )
-
-
-def main():
-    typer_app()
