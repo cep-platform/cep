@@ -48,37 +48,11 @@ if TOKEN:
             )
 else:
     client = httpx.Client(base_url=BASE_URL)
-app = typer.Typer()
+host_app = typer.Typer()
 
 
-@app.command()
-def auth():
-    cloudbox_server_url = input("cloudbox server instance url: ")
-    token = input("token: ")
-    with open('.cloudboxcfg', 'w') as f:
-        json.dump({
-            'base_url': cloudbox_server_url,
-            'token': token,
-            }, f)
-
-
-@app.command()
-def list_networks(data_dir: Path = DATA_DIR):
-    resp = client.get("/listNetworks")
-    resp.raise_for_status()
-    print('\n'.join(resp.json()))
-
-
-@app.command()
-def create_network(name: str):
-    resp = client.get("/createNetwork", params={'name': name})
-    resp.raise_for_status()
-
-    print(resp.json()['name'])
-
-
-@app.command()
-def list_hosts(network_name: str, data_dir: Path = DATA_DIR):
+@host_app.command("list")
+def _list(network_name: str, data_dir: Path = DATA_DIR):
     network_dir = data_dir / network_name
     print('\n'.join([
         path.name
@@ -91,13 +65,13 @@ def get_host_ip(network_name: str):
     return resp.json()
 
 
-@app.command()
-def create_host(network_name: str,
-                host_name: str,
-                am_lighthouse: bool = False,
-                public_ip: str = None,
-                output_dir: Path = DATA_DIR
-                ) -> list[Path]:
+@host_app.command()
+def create(network_name: str,
+           host_name: str,
+           am_lighthouse: bool = False,
+           public_ip: str = None,
+           output_dir: Path = DATA_DIR
+           ) -> list[Path]:
 
     if am_lighthouse and not public_ip:
         raise ValueError("public_ip should be set when am lighthouse is set to True")
@@ -210,7 +184,7 @@ def wait_for_interface(ip_address: str, timeout: float = 10.0):
     return False
 
 
-@app.command()
+@host_app.command()
 def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
     nebula_executable_path = get_executable_path("nebula")
     nebula_cert_executable_path = get_executable_path("nebula-cert")
@@ -221,7 +195,6 @@ def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
 
     am_lighthouse = config["lighthouse"]["am_lighthouse"]
     cert_path = config['pki']['cert']
-
 
     result = subprocess.run([
         nebula_cert_executable_path,
@@ -265,7 +238,3 @@ def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
         if proc.poll() is None:
             proc.terminate()
             proc.wait()
-
-
-if __name__ == "__main__":
-    app()
