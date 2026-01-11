@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cloudbox = "cloudbox.client.__main__:app"
+cloudbox = "cloudbox.cli.__main__:app"
 cloudbox-server = "cloudbox.server.api:main"
 
 [tool.setuptools.package-data]

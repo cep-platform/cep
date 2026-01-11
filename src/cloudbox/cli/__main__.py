@@ -13,7 +13,7 @@ import yaml
 from rich import print
 from platformdirs import user_data_dir
 
-from cloudbox.client.dns import NebulaDNS
+from cloudbox.cli.dns import NebulaDNS
 from cloudbox.server.datamodels import (
         CertificateRequest,
         HostRequest,
@@ -21,7 +21,7 @@ from cloudbox.server.datamodels import (
 from cloudbox.utils import get_executable_path, get_template_path
 
 
-APP_NAME = "cloudbox_client"
+APP_NAME = "cloudbox_cli"
 DATA_DIR = Path(user_data_dir(APP_NAME))
 DATA_DIR.mkdir(exist_ok=True)
 CLOUDBOXCFG_PATH = Path('.cloudboxcfg')
