@@ -20,3 +20,6 @@ uv run cloudbox list-networks
 uv run cloudbox create-host <network-name> <host-name> [--am-lighthouse --public-ip <public-ip>]
 uv run cloudbox connect <network-name> <host-name>
 ```
+
+## Architecture diagram
+![Architecture Diagram](./assets/architecture.png)
