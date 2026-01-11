@@ -1,9 +1,10 @@
 import secrets
+import shutil
 import subprocess
 from ipaddress import IPv6Address, IPv6Network
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from cloudbox.utils import get_executable_path
 from cloudbox.datamodels import NetworkRecord
@@ -59,6 +60,26 @@ def create(name: str) -> NetworkRecord:
     save_db(network_store)
 
     return network_record
+
+
+@network_router.delete("/delete")
+def delete(name: str):
+    network_data_dir = SERVER_DATA_DIR / name
+    if not network_data_dir.exists():
+        raise HTTPException(status_code=404, detail="Network data not found")
+
+    # Delete directory and contents
+    shutil.rmtree(network_data_dir)
+
+    # Delete from DB
+    network_store = load_db()
+    if name not in network_store.networks:
+        raise HTTPException(status_code=404, detail="Network not found")
+    del network_store.networks[name]
+    save_db(network_store)
+
+    # Return nothing (204 No Content)
+    return
 
 
 @network_router.get("/show")

@@ -10,7 +10,7 @@ CLI_DATA_DIR.mkdir(exist_ok=True)
 CLOUDBOXCFG_PATH = Path.home() / '.cloudboxcfg'
 
 
-def get_client(path: str = None):
+def get_client(path: str = None) -> httpx.Client:
     if CLOUDBOXCFG_PATH.exists():
         with open(CLOUDBOXCFG_PATH, 'r') as f:
             cloudbox_cfg = json.load(f)
