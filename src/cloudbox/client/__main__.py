@@ -3,10 +3,12 @@ import io
 import json
 import os
 import subprocess
+import time
 import typer
 import zipfile
 from pathlib import Path
 
+import psutil
 import yaml
 from rich import print
 from platformdirs import user_data_dir
@@ -15,7 +17,6 @@ from cloudbox.client.dns import NebulaDNS
 from cloudbox.server.datamodels import (
         CertificateRequest,
         HostRequest,
-        NetworkRecord,
         )
 from cloudbox.utils import get_executable_path, get_template_path
 
@@ -31,7 +32,11 @@ if CLOUDBOXCFG_PATH.exists():
 else:
     cloudbox_cfg = {}
 
-BASE_URL = os.environ.get("CLOUDBOX_BASE_URL") or cloudbox_cfg.get('base_url', "http://localhost:8000")
+BASE_URL = (
+        os.environ.get("CLOUDBOX_BASE_URL")
+        or
+        cloudbox_cfg.get('base_url', "http://localhost:8000")
+        )
 TOKEN = os.environ.get("CLOUDBOX_TOKEN") or cloudbox_cfg.get('token', None)
 
 if TOKEN:
@@ -65,16 +70,11 @@ def list_networks(data_dir: Path = DATA_DIR):
 
 
 @app.command()
-def create_network():
-    resp = client.get("/createNetwork")
+def create_network(name: str):
+    resp = client.get("/createNetwork", params={'name': name})
     resp.raise_for_status()
-    resp_data = resp.json()
 
-    network_record = NetworkRecord(
-            subnet=resp_data['subnet'],
-            hosts=resp_data['hosts']
-            )
-    print(network_record.name)
+    print(resp.json()['name'])
 
 
 @app.command()
@@ -178,7 +178,6 @@ def create_host(network_name: str,
             'proto': 'udp',
             'host': 'any',
             })
-        print(config)
     else:
         lighthouse_mapping_response = client.get(
                 "/getLighthouseMapping",
@@ -195,28 +194,77 @@ def create_host(network_name: str,
         yaml.safe_dump(config, f)
 
 
+def ip_exists(ip):
+    for if_addrs in psutil.net_if_addrs().values():
+        for addr in if_addrs:
+            if addr.address == ip:
+                return True
+    return False
+
+
+def wait_for_interface(ip_address: str, timeout: float = 10.0):
+    start = time.time()
+    while time.time() - start < timeout:
+        if ip_exists(ip=ip_address):
+            return True
+    return False
+
+
 @app.command()
 def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
-    nebula_executable_path = get_executable_path('nebula')
-    config_path = data_dir / network_name / host_name / 'config.yml'
-    with open(config_path, 'r') as f:
+    nebula_executable_path = get_executable_path("nebula")
+    nebula_cert_executable_path = get_executable_path("nebula-cert")
+    config_path = data_dir / network_name / host_name / "config.yml"
+
+    with open(config_path) as f:
         config = yaml.safe_load(f)
-    am_lighthouse = config['lighthouse']['am_lighthouse']
-    if not am_lighthouse:
-        lighthouses = config['lighthouse']['hosts']
-        # NebulaDNS(
-                #     nebula_iface="nebula1",
-                #     nebula_dns_ip=lighthouses,
-                # ).enable()
+
+    am_lighthouse = config["lighthouse"]["am_lighthouse"]
+    cert_path = config['pki']['cert']
+
+
+    result = subprocess.run([
+        nebula_cert_executable_path,
+        'print',
+        '-path', cert_path,
+        ], capture_output=True, text=True)
+    tld = json.loads(result.stdout)['details']['name'].split('.')[-1]
+    ip = json.loads(result.stdout)['details']['networks'][0].split('/')[0]
+
     command = [
             nebula_executable_path,
-            '-config', str(config_path)
+            "-config", str(config_path),
             ]
+
     print(f"Connecting to {network_name} as {host_name}")
-    subprocess.run(command, check=True)
-    if not am_lighthouse:
-        pass
-        # NebulaDNS().disable()
+
+    proc = subprocess.Popen(command)
+
+    dns = None
+    try:
+        if not am_lighthouse:
+            if not wait_for_interface(ip):
+                raise RuntimeError("nebula interface did not appear")
+
+            lighthouses = config["lighthouse"]["hosts"]
+
+            dns = NebulaDNS(
+                    nebula_iface="nebula1",
+                    nebula_dns_ips=lighthouses,
+                    domain=tld,
+                    )
+            dns.enable()
+
+        # Wait for nebula to exit
+        proc.wait()
+
+    finally:
+        if dns:
+            dns.disable()
+
+        if proc.poll() is None:
+            proc.terminate()
+            proc.wait()
 
 
 if __name__ == "__main__":
