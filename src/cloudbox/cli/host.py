@@ -1,7 +1,5 @@
-import httpx
 import io
 import json
-import os
 import subprocess
 import time
 import typer
@@ -19,34 +17,11 @@ from cloudbox.datamodels import (
         )
 from cloudbox.utils import get_executable_path, get_template_path
 from cloudbox.cli.utils import (
-        CLOUDBOXCFG_PATH,
         CLI_DATA_DIR,
+        get_client,
         )
 
-
-if CLOUDBOXCFG_PATH.exists():
-    with open(CLOUDBOXCFG_PATH, 'r') as f:
-        cloudbox_cfg = json.load(f)
-else:
-    cloudbox_cfg = {}
-
-BASE_URL = (
-        os.environ.get("CLOUDBOX_BASE_URL")
-        or
-        cloudbox_cfg.get('base_url', "http://localhost:8000")
-        )
-TOKEN = os.environ.get("CLOUDBOX_TOKEN") or cloudbox_cfg.get('token', None)
-
-if TOKEN:
-    client = httpx.Client(
-            base_url=BASE_URL,
-            headers={
-                "Authorization": f"Bearer {TOKEN}",
-                },
-            )
-else:
-    client = httpx.Client(base_url=BASE_URL)
-
+client = get_client("/host")
 host_app = typer.Typer()
 
 
@@ -101,7 +76,7 @@ def create(network_name: str,
             public_ip=public_ip,
             )
     host_response = client.post(
-            "/host/create",
+            "/create",
             json=host_request.model_dump(mode="json")
             )
     host_response.raise_for_status()
@@ -114,7 +89,7 @@ def create(network_name: str,
             )
 
     cert_response = client.post(
-            "/host/sign",
+            "/sign",
             json=certificate_request.model_dump(mode='json')
             )
     cert_response.raise_for_status()
@@ -147,8 +122,9 @@ def create(network_name: str,
             'host': 'any',
             })
     else:
-        lighthouse_mapping_response = client.get(
-                "/network/lighthouses",
+        network_client = get_client("/network")
+        lighthouse_mapping_response = network_client.get(
+                "/lighthouses",
                 params={'network_name': network_name}
                 )
         lighthouse_mapping_response.raise_for_status()
