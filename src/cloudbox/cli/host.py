@@ -16,7 +16,10 @@ from cloudbox.datamodels import (
         CertificateRequest,
         HostRequest,
         )
-from cloudbox.utils import get_executable_path, get_template_path
+from cloudbox.utils import (
+        get_executable_path,
+        get_template_path,
+        )
 from cloudbox.cli.utils import (
         CLI_DATA_DIR,
         get_client,
@@ -180,6 +183,18 @@ def show(network_name: str,
 
     host_data = {'server': host_response.json(), 'client': config}
     print(host_data)
+
+
+@host_app.command()
+def edit(network_name: str,
+         host_name: str,
+         output_dir: Path = CLI_DATA_DIR
+         ) -> list[Path]:
+
+    host_config_path = CLI_DATA_DIR / network_name / host_name / 'config.yml'
+    if not host_config_path.exists():
+        raise ValueError(f"Host config path {str(host_config_path)} does not exist")
+    typer.edit(filename=str(host_config_path))
 
 
 def ip_exists(ip):
