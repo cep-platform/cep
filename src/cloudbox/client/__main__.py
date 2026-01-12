@@ -15,8 +15,10 @@ from platformdirs import user_data_dir
 
 from cloudbox.client.dns import NebulaDNS
 from cloudbox.server.datamodels import (
+        AppStoreSpinupRequest,
         CertificateRequest,
         HostRequest,
+        AppStoreMeshPrivileges,
         )
 from cloudbox.utils import get_executable_path, get_template_path
 
@@ -266,6 +268,26 @@ def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
             proc.terminate()
             proc.wait()
 
+
+@app.command()
+def spinup_app_store(path: str):
+    """
+    Needs a path or token where to pull image(s) from
+    """
+    req = AppStoreSpinupRequest(
+       image_path=path,
+        federated=False,
+        privilege=AppStoreMeshPrivileges.EditStore
+    )
+    resp = client.post("/spinupAppStore", 
+                       json=req.model_dump(mode="json")
+    )
+
+    resp.raise_for_status()
+    print('\n'.join(resp.json()))
+
+    
+    return
 
 if __name__ == "__main__":
     app()

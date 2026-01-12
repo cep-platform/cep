@@ -15,11 +15,14 @@ from platformdirs import user_data_dir
 
 from cloudbox.utils import get_executable_path
 from cloudbox.server.datamodels import (
+        AppStoreSpinupRequest,
         NetworkRecord,
         NetworkStore,
         HostRecord,
         CertificateRequest,
         HostRequest,
+        AppStoreSpinupReport,
+        Container,
         )
 
 APP_NAME = "cloudbox"
@@ -105,6 +108,20 @@ def create_ca(name: str, ca_dir: Path):
 def list_networks() -> list[str]:
     return [path.name for path in DATA_DIR.glob('*') if path.name != 'db.json']
 
+
+@app.post("/spinupAppStore")
+def spinup_appstore(payload: AppStoreSpinupRequest) -> AppStoreSpinupReport:
+    container : Container = Container(
+        application_list=["foo", "bar"],
+        version="0.1",
+        nusers=3,
+    )
+
+    app_store_report : AppStoreSpinupReport = AppStoreSpinupReport(
+        image_path=payload.path,
+        container_list=container
+    )
+    return app_store_report
 
 @app.get("/createNetwork")
 def create_network(name: str) -> NetworkRecord:
