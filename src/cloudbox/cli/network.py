@@ -38,3 +38,10 @@ def delete(name: str):
     resp.raise_for_status()
     network_data_dir = CLI_DATA_DIR / name
     shutil.rmtree(network_data_dir, ignore_errors=True)
+
+
+@network_app.command()
+def lighthouses(name: str):
+    resp = client.get("/lighthouses", params={'network_name': name})
+    resp.raise_for_status()
+    print(resp.json())
