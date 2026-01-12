@@ -16,10 +16,6 @@ class NetworkRecord(BaseModel):
     subnet: ipaddress.IPv6Network
     hosts: dict[str, HostRecord]
 
-    # @property
-    # def name(self):
-    #     return self.subnet.compressed.replace(":", "-").replace("/", "x")
-    #
     @field_serializer("subnet")
     def serialize_subnet(self, subnet: ipaddress.IPv6Network) -> str:
         return str(subnet)
