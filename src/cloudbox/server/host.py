@@ -5,6 +5,7 @@ import zipfile
 from ipaddress import IPv6Address
 from pathlib import Path
 
+from fastapi import Depends
 from fastapi.responses import FileResponse
 from fastapi.exceptions import HTTPException
 
@@ -60,6 +61,40 @@ def create(request: HostRequest) -> HostRecord:
     network_record.hosts[request.name] = host_record
     save_db(network_store)
 
+    return host_record
+
+
+@host_router.delete("/delete")
+def delete(network_name: str, host_name: str):
+    network_store = load_db()
+    network_record = network_store.networks.get(network_name, None)
+    try:
+        del network_record.hosts[host_name]
+        save_db(network_store)
+    except KeyError:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Host {host_name} not found in {network_name}",
+            )
+    return {"status": "deleted"}
+
+
+@host_router.get("/show")
+def show(network_name: str, host_name: str) -> HostRecord:
+    network_store = load_db()
+    network_record = network_store.networks.get(network_name, None)
+    if network_record is None:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Network {network_name} not found",
+            )
+
+    host_record = network_record.hosts.get(host_name, None)
+    if host_record is None:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Host {host_name} not found in {network_name}",
+            )
     return host_record
 
 

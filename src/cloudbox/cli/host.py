@@ -1,5 +1,6 @@
 import io
 import json
+import shutil
 import subprocess
 import time
 import typer
@@ -44,6 +45,17 @@ def create(network_name: str,
 
     if am_lighthouse and not public_ip:
         raise ValueError("public_ip should be set when am lighthouse is set to True")
+
+    if not am_lighthouse:
+        network_client = get_client("/network")
+        lighthouse_mapping_response = network_client.get(
+                "/lighthouses",
+                params={'network_name': network_name}
+                )
+        lighthouse_mapping_response.raise_for_status()
+        static_host_map = lighthouse_mapping_response.json()
+        if not static_host_map:
+            raise ValueError('First host in the network should be created as a lighthouse. Please use --am-lighthouse and --public-ip to create a lighthouse')
 
     nebula_cert_executable_path = get_executable_path('nebula-cert')
 
@@ -122,13 +134,6 @@ def create(network_name: str,
             'host': 'any',
             })
     else:
-        network_client = get_client("/network")
-        lighthouse_mapping_response = network_client.get(
-                "/lighthouses",
-                params={'network_name': network_name}
-                )
-        lighthouse_mapping_response.raise_for_status()
-        static_host_map = lighthouse_mapping_response.json()
         config['static_host_map'] = static_host_map
         config['lighthouse'] = {'am_lighthouse': False,
                                 'interval': 60,
@@ -136,6 +141,45 @@ def create(network_name: str,
 
     with open(config_out_path, 'w') as f:
         yaml.safe_dump(config, f)
+
+
+@host_app.command()
+def delete(network_name: str,
+           host_name: str,
+           output_dir: Path = CLI_DATA_DIR
+           ) -> list[Path]:
+
+    host_response = client.delete(
+            "/delete",
+            params={'network_name': network_name,
+                    'host_name': host_name,
+                    },
+            )
+    host_response.raise_for_status()
+
+    host_path = CLI_DATA_DIR / network_name / host_name
+    shutil.rmtree(host_path)
+
+
+@host_app.command()
+def show(network_name: str,
+         host_name: str,
+         output_dir: Path = CLI_DATA_DIR
+         ) -> list[Path]:
+
+    host_response = client.get(
+            "/show",
+            params={'network_name': network_name,
+                    'host_name': host_name,
+                    },
+            )
+    host_response.raise_for_status()
+    host_config_path = CLI_DATA_DIR / network_name / host_name / 'config.yml'
+    with open(host_config_path, 'r') as f:
+        config = yaml.safe_load(f)
+
+    host_data = {'server': host_response.json(), 'client': config}
+    print(host_data)
 
 
 def ip_exists(ip):
