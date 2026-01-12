@@ -85,13 +85,20 @@ def delete(name: str):
 @network_router.get("/show")
 def show(name: str) -> NetworkRecord:
     network_store = load_db()
-    return network_store.networks.get(name, None)
+    response = network_store.networks.get(name, None)
+    if response:
+        return response
+    else:
+        raise HTTPException(status_code=404, detail="Network not found")
+
 
 
 @network_router.get("/lighthouses")
 def lighthouses(network_name: str) -> dict:
     network_store = load_db()
     network_record = network_store.networks.get(network_name, None)
+    if not network_record:
+        raise HTTPException(status_code=404, detail="Network not found")
 
     lighthouse_mapping = {
             str(host.ip): f"[{str(host.public_ip)}]:4242" if isinstance(host.public_ip, IPv6Address) else f"{str(host.public_ip)}:4242"
