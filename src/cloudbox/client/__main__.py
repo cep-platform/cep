@@ -1,3 +1,4 @@
+from ast import parse
 import httpx
 import io
 import json
@@ -19,7 +20,8 @@ from cloudbox.server.datamodels import (
         CertificateRequest,
         HostRequest,
         AppStoreMeshPrivileges,
-        )
+        Image,
+)
 from cloudbox.utils import get_executable_path, get_template_path
 
 
@@ -43,10 +45,10 @@ TOKEN = os.environ.get("CLOUDBOX_TOKEN") or cloudbox_cfg.get('token', None)
 
 if TOKEN:
     client = httpx.Client(
-            base_url=BASE_URL,
-            headers={
-                "Authorization": f"Bearer {TOKEN}",
-                },
+        base_url="http://127.0.0.1",#BASE_URL,
+            # headers={
+            #     "Authorization": f"Bearer {TOKEN}",
+            #     },
             )
 else:
     client = httpx.Client(base_url=BASE_URL)
@@ -270,18 +272,61 @@ def connect(network_name: str, host_name: str, data_dir: Path = DATA_DIR):
 
 
 @app.command()
-def spinup_app_store(path: str):
+def spinup_app_store(payload: str):
     """
+    Pull an image from the following:
+     - ubuntu
+     - python
+     - nginx:alpine
     Needs a path or token where to pull image(s) from
     """
-    req = AppStoreSpinupRequest(
-       image_path=path,
-        federated=False,
-        privilege=AppStoreMeshPrivileges.EditStore
+    image = Image()
+    image.parse(payload)
+
+    command = image.fetch_command()
+    
+    subprocess.run(
+        [
+            "docker",
+            "pull",
+            command
+        ],
+        capture_output=True,
+        text=True,
     )
+    
+    #do we need to hold the py process while its pulling? I think this should be async
+    
+    subprocess.run(
+        [
+            "docker",
+            "images",
+        ],
+        capture_output=True,
+        text=True,
+    )
+   
+    subprocess.run(
+        [
+            "docker",
+            "run",
+            "-it",
+            command
+        ],
+        capture_output=True,
+        text=True,
+    )
+    
+    req = AppStoreSpinupRequest(
+       image_path=image,
+        federated=False,
+       privilege=AppStoreMeshPrivileges.EditStore
+    )
+
     resp = client.post("/spinupAppStore", 
                        json=req.model_dump(mode="json")
     )
+
 
     resp.raise_for_status()
     print('\n'.join(resp.json()))

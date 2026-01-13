@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import ipaddress
-from typing import Optional, Union, List
+from typing import Optional, Union, List, Dict
 from enum import Enum
 
 from pydantic import (
@@ -86,6 +86,36 @@ class AppStoreMeshPrivileges(Enum):
     EditStore = 0
     ViewFullStore = 1
     ViewLimited = 2
+
+class ParseError(Exception):
+    pass
+#TODO: replace with config I/O instead of matching brackets
+# + Dataclasses
+class Image:
+    def __init__(self) -> None:
+       self.ubuntu : str = ""
+       self.python : str = ""
+       self.nginx : str = ""
+       self.command_map : Dict[str, str]
+       self.key : str = ""
+       self.Command_Map = {
+            self.ubuntu : "ubuntu:22.04",
+            self.python : "python:3.11",
+            self.nginx : "nginx:alpine"} 
+
+    def parse(self, image: str) -> ParseError | None:
+        match image:
+            case "ubuntu":
+                self.key = self.ubuntu
+            case "python":
+                self.key = self.python
+            case "nginx":
+                self.key = self.nginx
+            case _:
+                return ParseError("Incorrect Arg")
+
+    def fetch_command(self) -> str:
+        return self.Command_Map.get(self.key, "could not fetch command") 
 
 class Container(BaseModel):
     application_list : List[str]

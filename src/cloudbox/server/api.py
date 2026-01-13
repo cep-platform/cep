@@ -34,7 +34,6 @@ CLOUDBOX_SERVER_CFG_PATH = Path('.cloudboxservercfg')
 
 security = HTTPBearer()
 
-
 if CLOUDBOX_SERVER_CFG_PATH.exists():
     with open(CLOUDBOX_SERVER_CFG_PATH, 'r') as f:
         SERVER_TOKEN = f.read()
@@ -110,13 +109,12 @@ def list_networks() -> list[str]:
 
 
 @app.post("/spinupAppStore")
-def spinup_appstore(payload: AppStoreSpinupRequest) -> AppStoreSpinupReport:
+def spinup_app_store(payload: AppStoreSpinupRequest) -> AppStoreSpinupReport:
     container : Container = Container(
         application_list=["foo", "bar"],
         version="0.1",
         nusers=3,
     )
-
     app_store_report : AppStoreSpinupReport = AppStoreSpinupReport(
         image_path=payload.path,
         container_list=container
