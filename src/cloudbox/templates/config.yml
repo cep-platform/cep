@@ -416,3 +416,11 @@ firewall:
     #   proto: tcp
     #   group: remote_client
     #   local_cidr: 192.168.100.1/24
+
+
+#App store configs
+AppStore:
+  Images:
+    ubuntu : "ubuntu:22.04"
+    python : "python:3.11"
+    nginx : "nginx:alpine"  
