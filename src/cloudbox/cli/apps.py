@@ -3,9 +3,11 @@ from rich import print
 
 from typing import Dict
 from cloudbox.cli.utils import get_client, CLI_DATA_DIR
-from cloudbox.utils import get_template_path
+from cloudbox.utils import get_available_path_templates, get_template_path
 import subprocess
 import yaml 
+
+from result import Result, is_ok, is_err
 
 app_store_app = typer.Typer()
 client = get_client("/appStore")
@@ -16,14 +18,14 @@ from cloudbox.datamodels import (
     AppStoreSpinupRequest
 )
 
-def fetch_image_configs() -> Dict[str, str]:
-    config_path =  get_template_path("config.yml")
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    return config.get("AppStore").get("Images")
+def fetch_image_configs(app_name) -> Result[str, FileNotFoundError]:
+    config_path =  get_available_path_templates(app_name)
+    if config_path.is_err:
+        return config_path
+    return config_path
 
-@app_store_app .command()
-def spinup_app_store(image: str):
+@app_store_app.command()
+def spinup_app_store(app_name: str) -> str | None:
     """
     Pull an image from the following:
      - ubuntu
@@ -31,43 +33,19 @@ def spinup_app_store(image: str):
      - nginx:alpine
     Needs a path or token where to pull image(s) from
     """
+    
+    #TODO: Move all this server side when done
+    #Also parse socket from yml back to here for ppl to ssh
+    command = fetch_image_configs(app_name)
+    
+    if command.is_err():
+        print("Encountered err: ", command)
+        return
 
-    command_dict = fetch_image_configs()
-    command = command_dict.get(image)
-    
-    subprocess.run(
-        [
-            "docker",
-            "pull",
-            command
-        ],
-        capture_output=True,
-        text=True,
-    )
-    # #do we need to hold the py process while its pulling? I think this should be async
-    
-    # subprocess.run(
-    #     [
-    #         "docker",
-    #         "images",
-    #     ],
-    #     capture_output=True,
-    #     text=True,
-    # )
-    #
-    # subprocess.run(
-    #     [
-    #         "docker",
-    #         "run",
-    #         "-it",
-    #         command
-    #     ],
-    #     capture_output=True,
-    #     text=True,
-    # )
-    #
+    command = command.ok()
+
     # req = AppStoreSpinupRequest(
-    #    image_path=image,
+    #    image_path=app_name,
     #     federated=False,
     #    privilege=AppStoreMeshPrivileges.EditStore
     # )
@@ -75,13 +53,21 @@ def spinup_app_store(image: str):
     # resp = client.post("/spinupAppStore", 
     #                    json=req.model_dump(mode="json")
     # )
-    #
-    #
-    # resp.raise_for_status()
-    # print('\n'.join(resp.json()))
-    #
-    #
-    # return
+    
+    # this causes a runtime error and kills python process if args are not parsed well no point in checking return value
+    result = subprocess.run(
+        [
+            "docker-compose",
+            "-f",
+            command,
+            "up",
+            "-d"
+        ],
+        capture_output=True,
+        text=True,
+    ) #do we need to hold the py process while its pulling? I think this should be async
+    print(f"{app_name} successfuly spin up: {result.stderr}")
+    return
 
 @app_store_app.command("list")
 def _list():
