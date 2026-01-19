@@ -1,28 +1,29 @@
 import typer
 from rich import print
+import uvicorn
 
 from typing import Dict
-from cloudbox.cli.utils import get_client, CLI_DATA_DIR
-from cloudbox.utils import get_available_path_templates, get_template_path
-import subprocess
-import yaml 
+from cloudbox.cli.utils import get_apps_client
+from cloudbox.utils import get_available_path_templates
 
 from result import Result, is_ok, is_err
 
 app_store_app = typer.Typer()
-client = get_client("/appStore")
+client = get_apps_client("/appStore")
 
 from cloudbox.datamodels import (
     AppStoreMeshPrivileges,
-    AppStoreSpinupReport,
     AppStoreSpinupRequest
 )
 
-def fetch_image_configs(app_name) -> Result[str, FileNotFoundError]:
-    config_path =  get_available_path_templates(app_name)
-    if config_path.is_err:
-        return config_path
-    return config_path
+@app_store_app.command("run")
+def run():
+    uvicorn.run(
+        "cloudbox.app_store.main:app",
+        host="0.0.0.0",
+        port=8080,
+        reload=True,
+    )
 
 @app_store_app.command()
 def spinup_app_store(app_name: str) -> str | None:
@@ -34,40 +35,20 @@ def spinup_app_store(app_name: str) -> str | None:
     Needs a path or token where to pull image(s) from
     """
     
-    #TODO: Move all this server side when done
-    #Also parse socket from yml back to here for ppl to ssh
-    command = fetch_image_configs(app_name)
+    # TODO: parse socket from yml back to here for ppl to ssh
     
-    if command.is_err():
-        print("Encountered err: ", command)
-        return
 
-    command = command.ok()
+    req = AppStoreSpinupRequest(
+       image_path=app_name,
+        federated=False,
+       privilege=AppStoreMeshPrivileges.EditStore
+    )
 
-    # req = AppStoreSpinupRequest(
-    #    image_path=app_name,
-    #     federated=False,
-    #    privilege=AppStoreMeshPrivileges.EditStore
-    # )
-    #
-    # resp = client.post("/spinupAppStore", 
-    #                    json=req.model_dump(mode="json")
-    # )
-    
-    # this causes a runtime error and kills python process if args are not parsed well no point in checking return value
-    result = subprocess.run(
-        [
-            "docker-compose",
-            "-f",
-            command,
-            "up",
-            "-d"
-        ],
-        capture_output=True,
-        text=True,
-    ) #do we need to hold the py process while its pulling? I think this should be async
-    print(f"{app_name} successfuly spin up: {result.stderr}")
-    return
+    resp = client.post("/spinUp/deploy", 
+                       json=req.model_dump(mode="json")
+    )
+    return resp
+
 
 @app_store_app.command("list")
 def _list():

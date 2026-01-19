@@ -36,3 +36,8 @@ def get_client(path: str = None) -> httpx.Client:
                 )
     else:
         return httpx.Client(base_url=BASE_URL)
+
+def get_apps_client(path: str=None) -> httpx.Client:
+    #TODO: Add cloudbox CFG auth
+    BASE_URL = "http://localhost:8080" + path
+    return httpx.Client(base_url=BASE_URL)

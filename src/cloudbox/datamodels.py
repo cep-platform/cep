@@ -94,9 +94,9 @@ class HostRequest(BaseModel):
 
 
 class Container(BaseModel):
-    application_list : List[str]
     version : str
     nusers : int
+    already_up : bool
 
 class AppStoreSpinupReport(BaseModel):
     image_path : str

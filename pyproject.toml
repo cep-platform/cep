@@ -12,11 +12,13 @@ dependencies = [
     "pyyaml>=6.0.3",
     "rich>=14.2.0",
     "typer>=0.20.0",
+    "result", #last version as this is not maintained anymore
 ]
 
 [project.scripts]
 cloudbox = "cloudbox.cli.main:app"
 cloudbox-server = "cloudbox.server.main:main"
+cloudbox-app-store = "cloudbox.app_store.main:app"
 
 [tool.setuptools.package-data]
 cloudbox = ["templates/*.yaml", "executables/*"]
