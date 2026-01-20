@@ -3,7 +3,12 @@ from result import Result, Ok, Err
 
 from typing import List
 
-APP_TEMPLATE_PATH = os.getcwd() + "/src/cloudbox/app_store/app-templates"
+from cloudbox.utils import DATA_DIR
+
+APP_TEMPLATE_PATH = os.getcwd() + "/src/cloudbox/app_store/app_templates"
+
+APP_STORE_DATA_DIR = DATA_DIR / 'app_store'
+APP_STORE_DATA_DIR.mkdir(exist_ok=True)
 
 def get_available_path_templates(app_name: str) -> Result[List[str], str]:
     files = [f for f in os.listdir(APP_TEMPLATE_PATH)] 

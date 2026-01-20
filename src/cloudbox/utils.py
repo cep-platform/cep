@@ -20,7 +20,7 @@ DATA_DIR = Path(user_data_dir(APP_NAME))
 DATA_DIR.mkdir(exist_ok=True)
 CACHE_DIR = Path.home() / ".cache" / "nebula"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-APP_TEMPLATE_PATH = os.getcwd() + "/src/cloudbox/app-templates/"
+APP_TEMPLATE_PATH = os.getcwd() + "/src/cloudbox/app_templates/"
 
 CLOUDBOX_SERVER_CFG_PATH = Path('.cloudboxservercfg')
 
