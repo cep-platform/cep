@@ -5,7 +5,7 @@ services:
     volumes:
       - ./app:/app
     working_dir: /app
-    command: python -m http.server 8000
+    command: python -m http.server 8069
     ports:
       - "8069:8069"
     restart: unless-stopped

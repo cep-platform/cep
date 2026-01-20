@@ -94,7 +94,7 @@ class HostRequest(BaseModel):
 
 
 class Container(BaseModel):
-    version : str
+    version : int
     nusers : int
     already_up : bool
 

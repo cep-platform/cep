@@ -19,14 +19,14 @@ from cloudbox.datamodels import (
 @app_store_app.command("run")
 def run():
     uvicorn.run(
-        "cloudbox.app_store.main:app",
+        "cloudbox.app_store.server.main:app",
         host="0.0.0.0",
         port=8080,
         reload=True,
     )
 
 @app_store_app.command()
-def spinup_app_store(app_name: str) -> str | None:
+def deploy(app_name: str) -> str | None:
     """
     Pull an image from the following:
      - ubuntu
@@ -34,10 +34,7 @@ def spinup_app_store(app_name: str) -> str | None:
      - nginx:alpine
     Needs a path or token where to pull image(s) from
     """
-    
     # TODO: parse socket from yml back to here for ppl to ssh
-    
-
     req = AppStoreSpinupRequest(
        image_path=app_name,
         federated=False,
@@ -47,8 +44,10 @@ def spinup_app_store(app_name: str) -> str | None:
     resp = client.post("/spinUp/deploy", 
                        json=req.model_dump(mode="json")
     )
-    return resp
-
+    
+    resp.json()
+    
+    return "OK"
 
 @app_store_app.command("list")
 def _list():
@@ -84,9 +83,4 @@ def delete(name: str):
 
 @app_store_app.command()
 def edit(name: str):
-    raise NotImplementedError()
-
-
-@app_store_app.command()
-def deploy(name: str):
     raise NotImplementedError()
