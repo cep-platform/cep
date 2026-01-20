@@ -19,4 +19,4 @@ dependencies = [
 cloudbox = "cloudbox.cli.main:app"
 
 [tool.setuptools.package-data]
-cloudbox = ["templates/*.yaml", "executables/*"]
+cloudbox = ["templates/*.yaml", "app_store/app_templates/*.yaml"]
