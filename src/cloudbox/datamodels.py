@@ -94,18 +94,20 @@ class HostRequest(BaseModel):
 
 
 class Container(BaseModel):
-    version : int
-    nusers : int
-    already_up : bool
+    version: int
+    nusers: int
+    already_up: bool
+
 
 class AppStoreSpinupReport(BaseModel):
-    image_path : str
-    container_list : List[Container]
+    image_path: str
+    container_list: List[Container]
+
 
 class AppStoreSpinupRequest(BaseModel):
-    image_path : str
-    federated : bool #for mutual trust feature later
-    privilege : AppStoreMeshPrivileges
+    image_path: str
+    federated: bool
+    privilege: AppStoreMeshPrivileges
 
 
 class AppStoreMeshPrivileges(Enum):
