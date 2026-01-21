@@ -104,12 +104,6 @@ class AppStoreSpinupReport(BaseModel):
     container_list: List[Container]
 
 
-class AppStoreSpinupRequest(BaseModel):
-    image_path: str
-    federated: bool
-    privilege: AppStoreMeshPrivileges
-
-
 class AppStoreMeshPrivileges(Enum):
     #TODO: finish implementing this properly after discussing with team
     EditStore = 0
