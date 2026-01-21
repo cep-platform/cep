@@ -1,5 +1,22 @@
 # Cloudbox (Needs an actual name)
 
+### TLDR for running the apps service
+```
+
+# start the main server
+uv run cloudbox server set-auth-token
+uv run cloudbox server run  
+
+# in a second shell, start the app store server
+uv run cloudbox apps run
+
+# in a third shell:
+uv run cloudbox apps list
+uv run cloudbox apps deploy redis
+
+```
+
+### intro
 Cloudbox is an application that does three things at the moment:
 - Create and manage nebula peer to peer networks
 - Create and manage host on these networks
