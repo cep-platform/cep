@@ -22,7 +22,8 @@ You can now run
 uv run cloudbox --help
 ```
 
-# Start api
+### Main and Apps services
+Start api
 ```
 uv run cloudbox server set-auth-token # not secure but good enough for now
 uv run cloudbox server run  # start the main server
@@ -30,6 +31,7 @@ uv run cloudbox server run  # start the main server
 uv run cloudbox apps run  # start the app store server
 ```
 
+### CLI
 You can now use the cli:
 ```
 # run the cli
@@ -49,6 +51,14 @@ Create a host:
 uv run cloudbox host create <network-name> <host-name> [--am-lighthouse --public-ip <public-ip>]
 uv run cloudbox host connect <network-name> <host-name>  # this requires sudo privileges
 ```
+The first host needs to be a lighthouse (a host with some stable ip). if you want to test if things work, you can create a lighthouse host and connect with it, but to actually test the connectivity, you'll need some additional hosts. Think a number of cloud instances, a couple vms/containers in a virtualised network. Incus is nice because it's super lightweight, but you could also set things up with virt-manager/virtualbox/vmware etc. 
+
+### Apps
+Currently you can do the following:
+- list apps
+- deploy one of those apps (meaning deploy the compose file managed on the host running the app store service)
+
+The app store currently deploys apps to serve on all interfaces of the host you deploy the app store service on, so you don't need to create or be connected to a network yet. That's only for development use though, in the end networking and apps should integrate.
 
 List available app templates:
 ```
@@ -60,8 +70,15 @@ Start an app:
 uv run cloudbox apps deploy redis
 ```
 
-That's it, destroying apps needs to be done using docker itself, it hasn't been added to the API yet.
+You should now see redis when you run `docker ps`
 
+That's it, destroying apps needs to be done using docker itself, it hasn't been added to the API yet.
+```
+docker ps -q | xargs docker stop
+docker ps -aq | xargs docker rm
+```
+
+Check out the issues!
 
 
 ## Architecture diagram
