@@ -15,10 +15,18 @@ def deploy(name: str):
         headers=resp.headers,
     )
 
+@apps_router.get("/listAvailable")
+def _list_available():
+    resp = client.get("/listAvailable")
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers=resp.headers,
+    )
 
-@apps_router.get("/list")
-def _list():
-    resp = client.get("/list")
+@apps_router.get("/listUp")
+def _list_up():
+    resp = client.get("/listUp")
     return Response(
         content=resp.content,
         status_code=resp.status_code,

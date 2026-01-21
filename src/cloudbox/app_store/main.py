@@ -15,7 +15,10 @@ def deploy(name: str):
     Docker.add_to_deployment_file(app_template)
     Docker.compose_up()
 
+@app.get("/listAvailable")
+def _list_available() -> list[str]:
+    return Docker.list_available_apps()
 
-@app.get("/list")
-def _list() -> list[str]:
-    return Docker.list_apps()
+@app.get("/listUp")
+def _list_up():
+    return Docker.list_up()

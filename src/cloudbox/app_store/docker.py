@@ -1,8 +1,8 @@
 import subprocess
 from importlib import resources
 from pathlib import Path
-from typing import Dict
-
+from typing import Dict, List
+import json
 import yaml
 from rich import print
 from pydantic import BaseModel
@@ -60,21 +60,18 @@ class Docker():
 
             msg = "\n".join([
                 f"App {name} not found in template path {path.parent}",
-                f"Available apps are {Docker.list_apps()}",
+                f"Available apps are {Docker.list_available_apps()}",
                 ])
             raise ValueError(msg)
 
     @staticmethod
     def add_to_deployment_file(app_config: ComposeConfig):
         deployment_config = ComposeConfig.load(DEPLOYMENT_PATH)
-
         for top_level_key in ComposeConfig.__fields__.keys():
             top_level_deployment_config = getattr(deployment_config, top_level_key)
             top_level_app_config = getattr(app_config, top_level_key)
-
             for key, value in top_level_app_config.items():
                 top_level_deployment_config[key] = value
-
         deployment_config.save(DEPLOYMENT_PATH)
 
     @staticmethod
@@ -83,7 +80,7 @@ class Docker():
         print(deployment)
 
     @staticmethod
-    def list_apps() -> list[str]:
+    def list_available_apps() -> list[str]:
         templates = resources.files(APP_TEMPLATES_PATH)
 
         return [entry.name.split('.')[0] for entry in templates.iterdir()]
@@ -100,3 +97,19 @@ class Docker():
                 "-d"
             ],
         )
+
+    @staticmethod
+    def list_up() -> List[Dict[str, str]]:
+        process = subprocess.run(
+            [
+                "docker",
+                "ps",
+                "--format",
+                "json"
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        #TODO:check return values
+        return [json.loads(line) for line in process.stdout.strip().split('\n') if line]

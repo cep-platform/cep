@@ -10,7 +10,6 @@ SERVER_DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = SERVER_DATA_DIR / 'db.json'
 CLOUDBOX_SERVER_CFG_PATH = Path.home() / '.cloudboxservercfg'
 
-
 def load_db() -> NetworkStore:
     if not DB_PATH.exists():
         return NetworkStore(networks={})
