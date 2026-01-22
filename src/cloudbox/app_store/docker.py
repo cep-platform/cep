@@ -113,3 +113,34 @@ class Docker():
         )
         #TODO:check return values
         return [json.loads(line) for line in process.stdout.strip().split('\n') if line]
+    
+    #TODO:Output needs to be collected for logging
+    @staticmethod
+    def stop(container: str):
+        subprocess.Popen(
+            [
+                "docker",
+                "stop",
+                container
+            ],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL
+        )
+
+        return {"status": "stopping {0} in background".format(container)}
+
+    @staticmethod
+    def delete(container: str):
+        process = subprocess.run(
+            [
+                "docker",
+                "rm",
+                container
+            ],
+            capture_output=True,
+            text=True,
+            check=True
+        )
+        return process.stdout.strip().split('\n')
+
+
