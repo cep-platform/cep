@@ -17,7 +17,7 @@ from platformdirs import user_data_dir
 
 APP_NAME = "cloudbox"
 DATA_DIR = Path(user_data_dir(APP_NAME))
-DATA_DIR.mkdir(exist_ok=True)
+DATA_DIR.mkdir(exist_ok=True, parents=True)
 CACHE_DIR = Path.home() / ".cache" / "nebula"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 APP_TEMPLATE_PATH = os.getcwd() + "/src/cloudbox/app_templates/"

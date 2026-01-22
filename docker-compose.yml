@@ -1,0 +1,28 @@
+services:
+  cloudbox-main:
+    networks: 
+      - cloudbox
+    build:
+      context: .
+    container_name: cloudbox-main 
+    command: >
+      uv run cloudbox server run
+    ports:
+      - "8000:8000"
+    environment:
+      - APP_STORE_HOST_NAME=cloudbox-appstore
+
+  cloudbox-appstore:
+    networks: 
+      - cloudbox
+    build:
+      context: .
+    container_name: cloudbox-appstore
+    command: >
+      uv run cloudbox apps run
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+networks:
+  cloudbox:
+    driver: bridge

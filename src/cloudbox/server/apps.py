@@ -1,9 +1,12 @@
+import os
+
 from fastapi import APIRouter, Response
 import httpx
 
 apps_router = APIRouter(prefix="/apps")
 
-client = httpx.Client(base_url="http://localhost:8080")
+hostname = os.environ.get("APP_STORE_HOST_NAME", "localhost")
+client = httpx.Client(base_url=f"http://{hostname}:8080")
 
 
 @apps_router.post("/deploy")
