@@ -11,6 +11,8 @@ services:
       - "8000:8000"
     environment:
       - APP_STORE_HOST_NAME=cloudbox-appstore
+    volumes:
+      - ./src:/app/src
 
   cloudbox-appstore:
     networks: 
@@ -22,6 +24,7 @@ services:
       uv run cloudbox apps run
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ./src:/app/src
 
 networks:
   cloudbox:
