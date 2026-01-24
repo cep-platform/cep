@@ -122,13 +122,7 @@ def create(network_name: str,
     config['pki'] = pki
 
     if am_lighthouse:
-        config['lighthouse'] = {'am_lighthouse': True,
-                                'serve_dns': True,
-                                'dns': {
-                                    'host': f'{ip}',
-                                    'port': 53,
-                                    }
-                                }
+        config['lighthouse'] = {'am_lighthouse': True}
         config['firewall']['inbound'].append({
             'port': 53,
             'proto': 'udp',
@@ -138,7 +132,8 @@ def create(network_name: str,
         config['static_host_map'] = static_host_map
         config['lighthouse'] = {'am_lighthouse': False,
                                 'interval': 60,
-                                'hosts': list(static_host_map.keys())}
+                                'hosts': list(static_host_map.keys())
+                                }
 
     with open(config_out_path, 'w') as f:
         yaml.safe_dump(config, f)
