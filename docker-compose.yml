@@ -46,8 +46,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - APP_STORE_HOST_NAME: "cloudbox-appstore"
-      - CLOUDBOX_SERVER_TOKEN: "${CLOUDBOX_SERVER_TOKEN}"
+      APP_STORE_HOST_NAME: "cloudbox-appstore"
+      CLOUDBOX_SERVER_TOKEN: "${CLOUDBOX_SERVER_TOKEN}"
     volumes:
       - ./src:/app/src
 

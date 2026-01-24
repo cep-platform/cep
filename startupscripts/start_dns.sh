@@ -3,6 +3,7 @@
 # Install ip to get the nebula ip
 apt-get update && apt-get install -y iproute2 && rm -rf /var/lib/apt/lists/*
 
+sleep 10
 # Wait for the nebula interface to come up
 while ! ip a show nebula1; do
     echo "nebula1 not up, retrying in 1"
