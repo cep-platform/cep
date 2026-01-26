@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import ipaddress
-from typing import Optional, Union
+from typing import Optional, Union, List
+from enum import Enum
 
 from pydantic import (
         BaseModel,
@@ -90,3 +91,21 @@ class HostRequest(BaseModel):
         if not self.is_lighthouse and self.public_ip is not None:
             raise ValueError("Non-lighthouses must not have a public_ip")
         return self
+
+
+class Container(BaseModel):
+    version: int
+    nusers: int
+    already_up: bool
+
+
+class AppStoreSpinupReport(BaseModel):
+    image_path: str
+    container_list: List[Container]
+
+
+class AppStoreMeshPrivileges(Enum):
+    #TODO: finish implementing this properly after discussing with team
+    EditStore = 0
+    ViewFullStore = 1
+    ViewLimited = 2

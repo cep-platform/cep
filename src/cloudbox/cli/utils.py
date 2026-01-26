@@ -1,3 +1,4 @@
+from typing import Optional
 import httpx
 import json
 import os
@@ -36,3 +37,26 @@ def get_client(path: str = None) -> httpx.Client:
                 )
     else:
         return httpx.Client(base_url=BASE_URL)
+
+def parse_available(apps: list[dict], verbose: Optional[bool]):
+    n_apps = len(apps)
+    print("Found {0} apps running".format(n_apps))
+    for idx, app in enumerate(apps):
+        if verbose:
+            print("\n")
+            print(app)
+            print("\n--------------------------------")
+        else:
+            print(
+                "Image no.{0} : Runnig image {1}, created at {2} and running for {3} with size: {4}".format(idx + 1, 
+                    app.get("Image"),
+                    app.get("CreatedAt"),
+                    app.get("RunningFor"),
+                    app.get("Size")
+                )
+            )
+
+def get_apps_client(path: str) -> httpx.Client:
+    #TODO: Add cloudbox CFG auth
+    BASE_URL = "http://localhost:8080" + path
+    return httpx.Client(base_url=BASE_URL)

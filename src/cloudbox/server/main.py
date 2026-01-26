@@ -4,6 +4,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from cloudbox.server.utils import CLOUDBOX_SERVER_CFG_PATH
 from cloudbox.server.network import network_router
 from cloudbox.server.host import host_router
+from cloudbox.server.apps import apps_router
 
 
 def instantiate_main_app():
@@ -31,3 +32,4 @@ def instantiate_main_app():
 app = instantiate_main_app()
 app.include_router(network_router)
 app.include_router(host_router)
+app.include_router(apps_router)
