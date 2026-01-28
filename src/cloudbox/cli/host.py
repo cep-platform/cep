@@ -1,6 +1,8 @@
 import io
 import json
+import os
 import shutil
+import signal
 import subprocess
 import time
 import typer
@@ -25,6 +27,7 @@ from cloudbox.cli.utils import (
         get_client,
         )
 
+RUNTIME_PATH = CLI_DATA_DIR / "runtime.json"
 
 client = get_client("/host")
 host_app = typer.Typer()
@@ -208,10 +211,18 @@ def wait_for_interface(ip_address: str, timeout: float = 10.0):
 
 
 @host_app.command()
-def connect(network_name: str, host_name: str, data_dir: Path = CLI_DATA_DIR):
+def connect(network_name: str,
+            host_name: str,
+            data_dir: Path = CLI_DATA_DIR,
+            detach: bool = False,
+            ):
     nebula_executable_path = get_executable_path("nebula")
     nebula_cert_executable_path = get_executable_path("nebula-cert")
     config_path = data_dir / network_name / host_name / "config.yml"
+    if_name = "nebula1"
+
+    if detach:
+        runtime = {}
 
     with open(config_path) as f:
         config = yaml.safe_load(f)
@@ -234,7 +245,15 @@ def connect(network_name: str, host_name: str, data_dir: Path = CLI_DATA_DIR):
 
     print(f"Connecting to {network_name} as {host_name}")
 
-    proc = subprocess.Popen(command)
+    proc = subprocess.Popen(
+            command,
+            stdin=subprocess.DEVNULL,
+            # stdout=subprocess.DEVNULL,
+            # stderr=subprocess.DEVNULL,
+            start_new_session=True,
+            )
+    if detach:
+        runtime['pid'] = proc.pid
 
     dns = None
     try:
@@ -245,19 +264,37 @@ def connect(network_name: str, host_name: str, data_dir: Path = CLI_DATA_DIR):
             lighthouses = config["lighthouse"]["hosts"]
 
             dns = NebulaDNS(
-                    nebula_iface="nebula1",
+                    nebula_iface=if_name,
                     nebula_dns_ips=lighthouses,
                     domain=tld,
                     )
+            if detach:
+                runtime['if_name'] = if_name
+                runtime['lighthouses'] = lighthouses
+                runtime['tld'] = tld
             dns.enable()
 
-        # Wait for nebula to exit
-        proc.wait()
+        if not detach:
+            # Wait for nebula to exit
+            proc.wait()
+        else:
+            RUNTIME_PATH.write_text(json.dumps(runtime))
 
     finally:
-        if dns:
-            dns.disable()
+        if not detach:
+            if dns:
+                dns.disable()
 
-        if proc.poll() is None:
-            proc.terminate()
-            proc.wait()
+            if proc.poll() is None:
+                proc.terminate()
+                proc.wait()
+
+
+@host_app.command()
+def disconnect(data_dir: Path = CLI_DATA_DIR):
+    runtime = json.loads(RUNTIME_PATH.read_text())
+    NebulaDNS(nebula_iface=runtime["if_name"],
+              nebula_dns_ips=runtime["lighthouses"],
+              domain=runtime["tld"],
+              ).disable()
+    os.kill(runtime['pid'], signal.SIGTERM)

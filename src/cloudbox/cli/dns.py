@@ -1,10 +1,12 @@
 import re
 import platform
-from subprocess import run
+import socket
+import subprocess
+import threading
 from typing import List
+from subprocess import run
 
 import typer
-from rich import print
 
 from cloudbox.cli.utils import get_client
 from cloudbox.datamodels import AddAAAARequest
@@ -28,12 +30,14 @@ class NebulaDNS:
             raise ValueError("nebula_dns_ips must be a non-empty list")
 
         self.nebula_dns_servers = nebula_dns_ips
-        print(self.nebula_dns_servers)
         # self.nebula_dns_servers = ['8.8.8.8', '8.8.4.4']
         self.system_dns_servers = self.get_current_dns_servers()
         self.iface = nebula_iface
         self.domain = domain
         self.os = platform.system().lower()
+        self._stop_event = threading.Event()
+        self.dns_thread = None
+
 
     # --------------------
     # Public API
@@ -76,13 +80,38 @@ class NebulaDNS:
     # macOS (scoped resolver)
     # --------------------
 
+    def start_dns(self):
+        upstream = (self.nebula_dns_servers[0], 53)
+
+        sock4 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock4.bind(("127.0.0.1", 53))  # requires root, or pick 5353 for testing
+
+        sock6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+
+        sock4.settimeout(1)  # allows loop to check stop flag
+
+        while not self._stop_event.is_set():
+            try:
+                data, client = sock4.recvfrom(4096)
+            except socket.timeout:
+                continue
+
+            sock6.sendto(data, upstream)
+            resp, _ = sock6.recvfrom(4096)
+            sock4.sendto(resp, client)
+
     def _enable_macos(self):
-        pass
-        # self.set_dns_servers(self.nebula_dns_servers)
+        self._stop_event.clear()
+        if not self.dns_thread or not self.dns_thread.is_alive():
+            self.dns_thread = threading.Thread(target=self.start_dns, daemon=True)
+            self.dns_thread.start()
+        self.set_dns_servers(['127.0.0.1'])
 
     def _disable_macos(self):
-        pass
-        # self.set_dns_servers(self.system_dns_servers)
+        self._stop_event.set()
+        if self.dns_thread:
+            self.dns_thread.join(timeout=2)
+        self.set_dns_servers(self.system_dns_servers)
 
     # --------------------
     # Helpers
@@ -114,7 +143,6 @@ quit
         """
 
         res = self._run_scutil(primary_service_uuid_command)
-        print(res.stdout)
 
         # try:
         pattern = r"\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\b"
@@ -146,7 +174,6 @@ d.add ServerAddresses * {' '.join(dns_servers)}
 set State:/Network/Service/{primary_service_uuid}/DNS
 quit
         """
-        print(set_dns_command)
         self._run_scutil(set_dns_command)
 
 
@@ -155,8 +182,8 @@ client = get_client("/dns")
 
 
 @dns_app.command()
-def start(ip: str) -> None:
-    request = client.post('/start', json={'subnet': ip})
+def start() -> None:
+    request = client.post('/start')
     request.raise_for_status()
 
 

@@ -17,7 +17,9 @@ uv run cloudbox network create "$NETWORK_NAME"
 
 # Create a user for the server
 uv run cloudbox host create "$NETWORK_NAME" "$HOST_NAME" --am-lighthouse --public-ip $PUBLIC_IP
-uv run cloudbox host connect "$NETWORK_NAME" "$HOST_NAME"
+uv run cloudbox host connect "$NETWORK_NAME" "$HOST_NAME" --detach
+
+uv run cloudbox dns start
 
 # Keep container running if needed
 wait
