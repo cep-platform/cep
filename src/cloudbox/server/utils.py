@@ -28,3 +28,11 @@ def save_db(store: NetworkStore) -> None:
             indent=2,
             sort_keys=True,
         )
+
+
+def load_AAAA_records() -> dict[str, str]:
+    pass
+
+
+def write_AAAA_records(domain_names: dict[str, str]) -> None:
+    pass

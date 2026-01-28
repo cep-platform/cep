@@ -1,14 +1,17 @@
 services:
 
   unbound:
-    image: mvance/unbound:latest
+    build:
+      context: ./unbound/service
     network_mode: host
     volumes:
-      - ./unbound:/etc/unbound
+      - ./unbound/config/:/opt/unbound/etc/unbound/
       - unbound-state:/var/lib/unbound
-      - ./startupscripts/start_dns.sh:/app/start.sh
+
+      # dev
+      - ./unbound/service/api.py:/app/api.py
     restart: unless-stopped
-    command: /app/start.sh
+    command: uvicorn api:app --host 0.0.0.0 --port 8053
     depends_on:
       - cloudbox-main
 
@@ -19,8 +22,7 @@ services:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
-    build:
-      context: .
+    image: cloudbox:latest
     container_name: cloudbox-client 
     command: >
       /app/start.sh
@@ -38,8 +40,7 @@ services:
   cloudbox-main:
     networks: 
       - cloudbox
-    build:
-      context: .
+    image: cloudbox:latest
     container_name: cloudbox-main 
     command: >
       uv run cloudbox server run
@@ -55,8 +56,7 @@ services:
   cloudbox-appstore:
     networks: 
       - cloudbox
-    build:
-      context: .
+    image: cloudbox:latest
     container_name: cloudbox-appstore
     command: >
       uv run cloudbox apps run

@@ -1,8 +1,13 @@
-import platform
 import re
-import subprocess
-from typing import List
+import platform
 from subprocess import run
+from typing import List
+
+import typer
+from rich import print
+
+from cloudbox.cli.utils import get_client
+from cloudbox.datamodels import AddAAAARequest
 
 
 class NebulaDNS:
@@ -143,3 +148,32 @@ quit
         """
         print(set_dns_command)
         self._run_scutil(set_dns_command)
+
+
+dns_app = typer.Typer()
+client = get_client("/dns")
+
+
+@dns_app.command()
+def start(ip: str) -> None:
+    request = client.post('/start', json={'subnet': ip})
+    request.raise_for_status()
+
+
+@dns_app.command()
+def stop() -> None:
+    request = client.post('/stop')
+    request.raise_for_status()
+
+
+@dns_app.command()
+def add(name: str, ip: str) -> None:
+    aaaa_request = AddAAAARequest(name=name, ip=ip)
+    request = client.post('/records', json=aaaa_request.model_dump(mode='json'))
+    request.raise_for_status()
+
+
+@dns_app.command()
+def remove(name: str) -> None:
+    request = client.delete(f'/records/{name}')
+    request.raise_for_status()

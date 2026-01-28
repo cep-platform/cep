@@ -25,6 +25,7 @@ from cloudbox.cli.utils import (
         get_client,
         )
 
+
 client = get_client("/host")
 host_app = typer.Typer()
 

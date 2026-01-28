@@ -14,17 +14,22 @@ from cloudbox.server.utils import (
         load_db,
         )
 
+from cloudbox.server.dns import (
+        start_dns,
+        stop_dns,
+        )
+
 
 network_router = APIRouter(prefix="/network")
 
 
-def generate_ula_prefix():
+def generate_ula_prefix() -> IPv6Network:
     random_56bits = secrets.randbits(56)
     prefix = (0xfd << 120) | (random_56bits << 64)
     return IPv6Network((prefix, 64))
 
 
-def create_ca(name: str, ca_dir: Path):
+def create_ca(name: str, ca_dir: Path) -> Path:
     nebula_cert_executable_path = get_executable_path('nebula-cert')
     subprocess.run([
         nebula_cert_executable_path,
@@ -59,6 +64,8 @@ def create(name: str) -> NetworkRecord:
     network_store.networks[network_record.name] = network_record
     save_db(network_store)
 
+    start_dns(ip=str(subnet))
+
     return network_record
 
 
@@ -78,6 +85,8 @@ def delete(name: str):
     del network_store.networks[name]
     save_db(network_store)
 
+    stop_dns()
+
     # Return nothing (204 No Content)
     return
 
@@ -90,7 +99,6 @@ def show(name: str) -> NetworkRecord:
         return response
     else:
         raise HTTPException(status_code=404, detail="Network not found")
-
 
 
 @network_router.get("/lighthouses")
