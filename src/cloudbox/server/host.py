@@ -67,7 +67,8 @@ def create(request: HostRequest) -> HostRecord:
             )
 
     if request.add_dns_record:
-        aaaa_request = AddAAAARequest(name=request.name, ip=str(ip))
+        domain_name = f"{request.name}.{network_record.name}"
+        aaaa_request = AddAAAARequest(name=domain_name, ip=str(ip))
         add_host_to_dns(aaaa_request)
 
     network_record.hosts[request.name] = host_record

@@ -182,8 +182,8 @@ client = get_client("/dns")
 
 
 @dns_app.command()
-def start() -> None:
-    request = client.post('/start')
+def start(network_name: str) -> None:
+    request = client.post('/start', json={"network_name": network_name})
     request.raise_for_status()
 
 

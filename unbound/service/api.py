@@ -68,6 +68,8 @@ def start(subnet: str = Body(..., embed=True)):
     config_template_path = Path('/opt/unbound/etc/unbound/unbound_template.conf')
     config_template = config_template_path.read_text()
 
+    subprocess.run("unbound-control-setup", check=True)
+
     ip = str(next(IPv6Network(subnet).hosts()))
 
     config = (
@@ -78,13 +80,13 @@ def start(subnet: str = Body(..., embed=True)):
 
     config_path = Path('/opt/unbound/etc/unbound/unbound.conf')
     config_path.write_text(config)
-
+    
     global process
     with process_lock:
         if process and process.poll() is None:
             raise HTTPException(400, "Process already running")
 
-        process = subprocess.Popen(["unbound"])
+        process = subprocess.Popen(["/unbound.sh"])
 
     return {"status": "started"}
 

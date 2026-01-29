@@ -2,9 +2,10 @@ import os
 from ipaddress import IPv6Address
 
 import httpx
-from fastapi import APIRouter, Response, HTTPException, status
+from fastapi import APIRouter, Response, HTTPException, Body
 
 from cloudbox.datamodels import AddAAAARequest
+from cloudbox.server.utils import load_db
 
 dns_router = APIRouter(prefix="/dns")
 
@@ -12,8 +13,8 @@ hostname = os.environ.get("DNS_IP", "172.17.0.1")
 client = httpx.Client(base_url=f"http://{hostname}:8053")
 
 
-def start_dns(ip: str):
-    resp = client.post("/start", json={"subnet": ip})
+def start_dns(subnet: str):
+    resp = client.post("/start", json={"subnet": subnet})
     resp.raise_for_status()
     return resp
 
@@ -42,14 +43,20 @@ def is_valid_ipv6(address: str) -> bool:
 
 
 @dns_router.post("/start")
-def start(ip: str):
+def start(network_name: str = Body(..., embed=True)):
+    network_store = load_db()
 
-    if not is_valid_ipv6(ip):
+    network_record = network_store.networks.get(network_name, None)
+    if not network_record:
         raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid IPv6 address"
-        )
-    resp = start_dns(ip)
+                status_code=404,
+                detail=f"Network '{network_name}' not found",
+                )
+
+    # Get first ip in range for DNS
+    subnet = str(network_record.subnet)
+    resp = start_dns(subnet)
+
     return Response(
         content=resp.content,
         status_code=resp.status_code,

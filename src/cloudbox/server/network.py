@@ -64,7 +64,7 @@ def create(name: str) -> NetworkRecord:
     network_store.networks[network_record.name] = network_record
     save_db(network_store)
 
-    start_dns(ip=str(subnet))
+    # start_dns(ip=str(subnet))
 
     return network_record
 
@@ -85,7 +85,7 @@ def delete(name: str):
     del network_store.networks[name]
     save_db(network_store)
 
-    stop_dns()
+    # stop_dns()
 
     # Return nothing (204 No Content)
     return

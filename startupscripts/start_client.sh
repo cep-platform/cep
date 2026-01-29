@@ -25,5 +25,5 @@ until ip a | grep nebula; do
   sleep 0.5
 done
 
-uv run cloudbox dns start
+uv run cloudbox dns start "$NETWORK_NAME"
 wait "$pid"

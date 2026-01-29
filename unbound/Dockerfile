@@ -14,7 +14,9 @@ RUN apt-get update && \
 RUN pip3 install --no-cache-dir --break-system-packages fastapi uvicorn rich
 
 # Copy API code
-COPY api.py api.py
+COPY service/api.py api.py
+COPY config/a-records.conf /opt/unbound/etc/unbound/a-records.conf
+COPY config/unbound_template.conf /opt/unbound/etc/unbound/unbound_template.conf
 
 # Expose API port (informational with host networking)
 EXPOSE 8000

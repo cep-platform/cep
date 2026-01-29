@@ -2,10 +2,10 @@ services:
 
   unbound:
     build:
-      context: ./unbound/service
+      context: ./unbound
     network_mode: host
     volumes:
-      - ./unbound/config/:/opt/unbound/etc/unbound/
+      # - ./unbound/config/:/opt/unbound/etc/unbound/
       - unbound-state:/var/lib/unbound
 
       # dev
