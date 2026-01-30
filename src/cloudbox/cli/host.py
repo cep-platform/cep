@@ -63,10 +63,8 @@ def create(network_name: str,
     nebula_cert_executable_path = get_executable_path('nebula-cert')
 
     network_path = CLI_DATA_DIR / network_name
-    network_path.mkdir(exist_ok=True)
-
     host_data_path = network_path / host_name
-    host_data_path.mkdir(exist_ok=True)
+    host_data_path.mkdir(exist_ok=True, parents=True)
 
     priv_key_path = host_data_path / f'{host_name}.key'
     pub_key_path = host_data_path / f'{host_name}.pub'

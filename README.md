@@ -15,6 +15,14 @@ uv run cloudbox apps list
 uv run cloudbox apps deploy redis
 
 ```
+Or as a docker deployment:
+```
+docker compose up --build 
+
+# In a second shell (or use -d)
+uv run cloudbox apps list
+uv run cloudbox apps deploy redis
+```
 
 ### intro
 Cloudbox is an application that does three things at the moment:
