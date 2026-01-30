@@ -1,12 +1,17 @@
+import os
 import re
 import subprocess
 import threading
+from dotenv import load_dotenv
 from ipaddress import IPv6Network
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, Depends, HTTPException, status, Body
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel
 
+
+load_dotenv()
 
 process_lock = threading.Lock()
 process: subprocess.Popen | None = None
@@ -42,7 +47,7 @@ def read_records(path: Path) -> dict[str, str]:
         for line in path.read_text().splitlines()
         if line.strip()[0] != '#'
         ])
-    
+
 
 def write_records(path: Path, config: dict[str, str]):
     path.write_text(
@@ -55,7 +60,27 @@ def write_records(path: Path, config: dict[str, str]):
             )
 
 
-app = FastAPI()
+def instantiate_main_app():
+    server_token = os.environ.get("DNS_TOKEN", "")
+    if server_token:
+        def verify_token(
+            credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+        ):
+            token = credentials.credentials
+
+            if token != server_token:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid or missing token",
+                )
+        return FastAPI(
+                dependencies=[Depends(verify_token)]
+                )
+    else:
+        return FastAPI()
+
+
+app = instantiate_main_app()
 
 
 @app.get("/health")

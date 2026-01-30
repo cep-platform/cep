@@ -9,13 +9,22 @@ from cloudbox.server.utils import load_db
 
 dns_router = APIRouter(prefix="/dns")
 
-hostname = os.environ.get("DNS_IP", "172.17.0.1")
-client = httpx.Client(base_url=f"http://{hostname}:8053")
+hostname = os.environ.get("DNS_IP", "localhost")
+dns_token = os.environ.get("DNS_TOKEN", None)
+base_url = f"http://{hostname}:8053"
+if dns_token:
+    client = httpx.Client(
+                    base_url=base_url,
+                    headers={
+                        "Authorization": f"Bearer {dns_token}",
+                        },
+                    )
+else:
+    client = httpx.Client(base_url=base_url)
 
 
 def start_dns(subnet: str):
     resp = client.post("/start", json={"subnet": subnet})
-    resp.raise_for_status()
     return resp
 
 

@@ -1,17 +1,19 @@
 services:
 
-  unbound:
+  cloudbox-dns:
     build:
       context: ./unbound
     network_mode: host
+    container_name: cloudbox-dns 
     volumes:
-      # - ./unbound/config/:/opt/unbound/etc/unbound/
       - unbound-state:/var/lib/unbound
 
       # dev
       - ./unbound/service/api.py:/app/api.py
     restart: unless-stopped
     command: uvicorn api:app --host 0.0.0.0 --port 8053
+    environment:
+      DNS_TOKEN: "${DNS_TOKEN}"
     depends_on:
       - cloudbox-main
 
@@ -49,6 +51,8 @@ services:
     environment:
       APP_STORE_HOST_NAME: "cloudbox-appstore"
       CLOUDBOX_SERVER_TOKEN: "${CLOUDBOX_SERVER_TOKEN}"
+      DNS_IP: "${DNS_IP}"
+      DNS_TOKEN: "${DNS_TOKEN}"
     volumes:
       - ./src:/app/src
 

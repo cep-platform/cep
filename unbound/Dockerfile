@@ -11,7 +11,7 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Install FastAPI + ASGI server
-RUN pip3 install --no-cache-dir --break-system-packages fastapi uvicorn rich
+RUN pip3 install --no-cache-dir --break-system-packages fastapi uvicorn rich python-dotenv
 
 # Copy API code
 COPY service/api.py api.py
