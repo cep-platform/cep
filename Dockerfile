@@ -32,5 +32,5 @@ RUN uv sync
 COPY src/ src/
 RUN uv pip install -e .
 
-CMD ["uv", "run", "cloudbox", "server", "run"]
+CMD ["uv", "run", "cep", "server", "run"]
 

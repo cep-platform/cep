@@ -1,5 +1,5 @@
 [project]
-name = "cloudbox"
+name = "cep"
 version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.scripts]
-cloudbox = "cloudbox.cli.main:app"
+cep = "cep.cli.main:app"
 
 [tool.setuptools.package-data]
-cloudbox = ["templates/*.yaml", "app_store/app_templates/*.yaml"]
+cep = ["templates/*.yaml", "app_store/app_templates/*.yaml"]

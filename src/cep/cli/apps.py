@@ -3,7 +3,7 @@ import typer
 from rich import print
 import uvicorn
 
-from cloudbox.cli.utils import get_client, parse_available
+from cep.cli.utils import get_client, parse_available
 app_store_app = typer.Typer()
 client = get_client("/apps")
 
@@ -11,7 +11,7 @@ client = get_client("/apps")
 @app_store_app.command("run")
 def run():
     uvicorn.run(
-        "cloudbox.app_store.main:app",
+        "cep.app_store.main:app",
         host="0.0.0.0",
         port=8080,
         reload=True,

@@ -1,18 +1,18 @@
-# Cloudbox (Needs an actual name)
+# Cep (Needs an actual name)
 
 ### TLDR for running the apps service
 ```
 
 # start the main server
-uv run cloudbox server set-auth-token
-uv run cloudbox server run  
+uv run cep server set-auth-token
+uv run cep server run  
 
 # in a second shell, start the app store server
-uv run cloudbox apps run
+uv run cep apps run
 
 # in a third shell:
-uv run cloudbox apps list
-uv run cloudbox apps deploy redis
+uv run cep apps list
+uv run cep apps deploy redis
 
 ```
 Or as a docker deployment:
@@ -20,12 +20,12 @@ Or as a docker deployment:
 docker compose up --build 
 
 # In a second shell (or use -d)
-uv run cloudbox apps list
-uv run cloudbox apps deploy redis
+uv run cep apps list
+uv run cep apps deploy redis
 ```
 
 ### intro
-Cloudbox is an application that does three things at the moment:
+Cep is an application that does three things at the moment:
 - Create and manage nebula peer to peer networks
 - Create and manage host on these networks
 - Manage and deploy docker containers to run webapps
@@ -44,37 +44,37 @@ uv pip install -e .
 
 You can now run
 ```
-uv run cloudbox --help
+uv run cep --help
 ```
 
 ### Main and Apps services
 Start api
 ```
-uv run cloudbox server set-auth-token # not secure but good enough for now
-uv run cloudbox server run  # start the main server
+uv run cep server set-auth-token # not secure but good enough for now
+uv run cep server run  # start the main server
 # in a different shell:
-uv run cloudbox apps run  # start the app store server
+uv run cep apps run  # start the app store server
 ```
 
 ### CLI
 You can now use the cli:
 ```
 # run the cli
-uv run cloudbox auth   # provide the url as follows: http://<ip/hostname/localhost>:8000 (no quotationmarks)
+uv run cep auth   # provide the url as follows: http://<ip/hostname/localhost>:8000 (no quotationmarks)
 ```
 
 First create a network
 ```
 # create a network
-uv run cloudbox network create <networkname>
-uv run cloudbox network list
+uv run cep network create <networkname>
+uv run cep network list
 ```
 
 Create a host:
 ```
 # create a host and connect (first one needs to be a lighthouse)
-uv run cloudbox host create <network-name> <host-name> [--am-lighthouse --public-ip <public-ip>]
-uv run cloudbox host connect <network-name> <host-name>  # this requires sudo privileges
+uv run cep host create <network-name> <host-name> [--am-lighthouse --public-ip <public-ip>]
+uv run cep host connect <network-name> <host-name>  # this requires sudo privileges
 ```
 The first host needs to be a lighthouse (a host with some stable ip). If you want to test if things work, you can create a lighthouse host and connect with it, but to actually test the connectivity, you'll need some additional hosts. Some ways to run a couple of hosts with different ips:
 - a number of cloud instances
@@ -94,12 +94,12 @@ The app store currently deploys apps to serve on all interfaces (of the host on 
 
 List available app templates:
 ```
-uv run cloudbox apps list
+uv run cep apps list
 ```
 
 Start an app:
 ```
-uv run cloudbox apps deploy redis
+uv run cep apps deploy redis
 ```
 
 You should now see redis when you run `docker ps`

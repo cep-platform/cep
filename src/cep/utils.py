@@ -15,14 +15,14 @@ from typing import List
 from platformdirs import user_data_dir
 
 
-APP_NAME = "cloudbox"
+APP_NAME = "cep"
 DATA_DIR = Path(user_data_dir(APP_NAME))
 DATA_DIR.mkdir(exist_ok=True, parents=True)
 CACHE_DIR = Path.home() / ".cache" / "nebula"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-APP_TEMPLATE_PATH = os.getcwd() + "/src/cloudbox/app_templates/"
+APP_TEMPLATE_PATH = os.getcwd() + "/src/cep/app_templates/"
 
-CLOUDBOX_SERVER_CFG_PATH = Path('.cloudboxservercfg')
+CEP_SERVER_CFG_PATH = Path('.cepservercfg')
 
 NEBULA_VERSION = "1.10.0"
 
@@ -123,7 +123,7 @@ def get_available_path_templates(app_name: str) -> Result[List[str], str]:
 
 def get_template_path(name):
     with resources.as_file(
-            resources.files("cloudbox.templates").joinpath(name)
+            resources.files("cep.templates").joinpath(name)
             ) as template_path:
         path = Path(template_path)
         return path if path.exists() else None

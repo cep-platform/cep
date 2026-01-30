@@ -3,7 +3,7 @@ import shutil
 import typer
 from rich import print
 
-from cloudbox.cli.utils import get_client, CLI_DATA_DIR
+from cep.cli.utils import get_client, CLI_DATA_DIR
 
 
 network_app = typer.Typer()

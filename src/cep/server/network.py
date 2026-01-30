@@ -6,15 +6,15 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from cloudbox.utils import get_executable_path
-from cloudbox.datamodels import NetworkRecord
-from cloudbox.server.utils import (
+from cep.utils import get_executable_path
+from cep.datamodels import NetworkRecord
+from cep.server.utils import (
         SERVER_DATA_DIR,
         save_db,
         load_db,
         )
 
-from cloudbox.server.dns import (
+from cep.server.dns import (
         start_dns,
         stop_dns,
         )
