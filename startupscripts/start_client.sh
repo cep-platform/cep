@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+cat /app/client_banner.txt
+
 sleep 5
 # sleep until the server is reachable
 while ! uv run cep network list; do

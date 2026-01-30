@@ -35,8 +35,8 @@ services:
     depends_on:
       - cep-main
     volumes:
+      # dev
       - ./src:/app/src
-      - ./startupscripts/start_client.sh:/app/start.sh
 
 
   cep-main:
@@ -54,6 +54,7 @@ services:
       DNS_IP: "${DNS_IP}"
       DNS_TOKEN: "${DNS_TOKEN}"
     volumes:
+      # dev
       - ./src:/app/src
 
 
