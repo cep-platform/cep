@@ -13,7 +13,7 @@ NETWORK_NAME="${NETWORK_NAME:-cloudboxnet}"
 HOST_NAME="${HOST_NAME:-mainserver}"
 
 # Create an initial network
-uv run cloudbox network create "$NETWORK_NAME"
+uv run cloudbox network create "$NETWORK_NAME" --no-dns
 
 # Create a user for the server
 uv run cloudbox host create "$NETWORK_NAME" "$HOST_NAME" --am-lighthouse --public-ip $PUBLIC_IP

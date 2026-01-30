@@ -51,9 +51,9 @@ def _list() -> list[str]:
 
 
 @network_router.get("/create")
-def create(name: str) -> NetworkRecord:
+def create(name: str, dns: bool) -> NetworkRecord:
     subnet = generate_ula_prefix()
-    network_record = NetworkRecord(name=name, subnet=subnet, hosts={})
+    network_record = NetworkRecord(name=name, subnet=subnet, hosts={}, dns=dns)
 
     network_data_dir = SERVER_DATA_DIR / network_record.name
     network_data_dir.mkdir(exist_ok=True)
@@ -64,7 +64,8 @@ def create(name: str) -> NetworkRecord:
     network_store.networks[network_record.name] = network_record
     save_db(network_store)
 
-    # start_dns(ip=str(subnet))
+    if dns:
+        start_dns(subnet=str(subnet))
 
     return network_record
 
@@ -82,10 +83,14 @@ def delete(name: str):
     network_store = load_db()
     if name not in network_store.networks:
         raise HTTPException(status_code=404, detail="Network not found")
+    
+    if network_store.networks[name].dns:
+        stop_dns()
+
     del network_store.networks[name]
     save_db(network_store)
 
-    # stop_dns()
+    
 
     # Return nothing (204 No Content)
     return

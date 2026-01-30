@@ -21,6 +21,7 @@ class NetworkRecord(BaseModel):
     name: str
     subnet: ipaddress.IPv6Network
     hosts: dict[str, HostRecord]
+    dns: bool
 
     @field_serializer("subnet")
     def serialize_subnet(self, subnet: ipaddress.IPv6Network) -> str:
