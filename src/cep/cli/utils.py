@@ -3,7 +3,7 @@ from typing import Optional
 import httpx
 import os
 
-from cloudbox.utils import DATA_DIR
+from cep.utils import DATA_DIR
 
 load_dotenv()
 
@@ -13,12 +13,12 @@ CLI_DATA_DIR.mkdir(exist_ok=True)
 
 def get_client(path: str = None) -> httpx.Client:
 
-    BASE_URL = os.environ.get("CLOUDBOX_BASE_URL", "http://localhost:8000")
+    BASE_URL = os.environ.get("CEP_BASE_URL", "http://localhost:8000")
 
     if path:
         BASE_URL = BASE_URL + path
 
-    TOKEN = os.environ.get("CLOUDBOX_SERVER_TOKEN", None)
+    TOKEN = os.environ.get("CEP_SERVER_TOKEN", None)
 
     if TOKEN:
         return httpx.Client(
@@ -50,6 +50,6 @@ def parse_available(apps: list[dict], verbose: Optional[bool]):
             )
 
 def get_apps_client(path: str) -> httpx.Client:
-    #TODO: Add cloudbox CFG auth
+    #TODO: Add cep CFG auth
     BASE_URL = "http://localhost:8080" + path
     return httpx.Client(base_url=BASE_URL)

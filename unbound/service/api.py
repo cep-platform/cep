@@ -17,6 +17,16 @@ process_lock = threading.Lock()
 process: subprocess.Popen | None = None
 
 
+ascii_banner = r"""
+_________  _____________________     ________
+\_   ___ \ \_   _____/\______   \    \______ \    ____    ______
+/    \  \/  |    __)_  |     ___/     |    |  \  /    \  /  ___/
+\     \____ |        \ |    |         |    `   \|   |  \ \___ \
+ \______  //_______  / |____|        /_______  /|___|  //____  >
+        \/         \/                        \/      \/      \/
+"""
+print(ascii_banner)
+
 class AddAAAARequest(BaseModel):
     name: str
     ip: str

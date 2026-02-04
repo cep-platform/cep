@@ -1,11 +1,11 @@
 import typer
 from dotenv import load_dotenv
 
-from cloudbox.cli.apps import app_store_app
-from cloudbox.cli.host import host_app
-from cloudbox.cli.network import network_app
-from cloudbox.cli.server import server_app
-from cloudbox.cli.dns import dns_app
+from cep.cli.apps import app_store_app
+from cep.cli.host import host_app
+from cep.cli.network import network_app
+from cep.cli.server import server_app
+from cep.cli.dns import dns_app
 
 load_dotenv()
 

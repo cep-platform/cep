@@ -3,14 +3,14 @@ import os
 from fastapi import FastAPI, Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from cloudbox.server.network import network_router
-from cloudbox.server.host import host_router
-from cloudbox.server.apps import apps_router
-from cloudbox.server.dns import dns_router
+from cep.server.network import network_router
+from cep.server.host import host_router
+from cep.server.apps import apps_router
+from cep.server.dns import dns_router
 
 
 def instantiate_main_app():
-    server_token = os.environ.get("CLOUDBOX_SERVER_TOKEN", "")
+    server_token = os.environ.get("CEP_SERVER_TOKEN", "")
     if server_token:
 
         def verify_token(

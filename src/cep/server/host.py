@@ -9,19 +9,19 @@ from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from fastapi.exceptions import HTTPException
 
-from cloudbox.utils import get_executable_path
-from cloudbox.datamodels import (
+from cep.utils import get_executable_path
+from cep.datamodels import (
         HostRecord,
         CertificateRequest,
         HostRequest,
         AddAAAARequest
         )
-from cloudbox.server.utils import (
+from cep.server.utils import (
         SERVER_DATA_DIR,
         save_db,
         load_db,
         )
-from cloudbox.server.dns import (
+from cep.server.dns import (
         add_host_to_dns,
         remove_host_from_dns,
         )

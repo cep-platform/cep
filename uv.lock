@@ -54,7 +54,7 @@ wheels = [
 ]
 
 [[package]]
-name = "cloudbox"
+name = "cep"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [

@@ -1,10 +1,10 @@
 services:
 
-  cloudbox-dns:
+  cep-dns:
     build:
       context: ./unbound
     network_mode: host
-    container_name: cloudbox-dns 
+    container_name: cep-dns 
     volumes:
       - unbound-state:/var/lib/unbound
 
@@ -15,62 +15,63 @@ services:
     environment:
       DNS_TOKEN: "${DNS_TOKEN}"
     depends_on:
-      - cloudbox-main
+      - cep-main
 
 
-  cloudbox-client:
+  cep-client:
     network_mode: host
     cap_add:
       - NET_ADMIN
     devices:
       - /dev/net/tun:/dev/net/tun
-    image: cloudbox:latest
-    container_name: cloudbox-client 
+    image: cep:latest
+    container_name: cep-client 
     command: >
       /app/start.sh
     environment:
-      CLOUDBOX_BASE_URL: "${CLOUDBOX_BASE_URL}"
-      CLOUDBOX_SERVER_TOKEN: "${CLOUDBOX_SERVER_TOKEN}"
+      CEP_BASE_URL: "${CEP_BASE_URL}"
+      CEP_SERVER_TOKEN: "${CEP_SERVER_TOKEN}"
       PUBLIC_IP: "${PUBLIC_IP}"
     depends_on:
-      - cloudbox-main
+      - cep-main
     volumes:
+      # dev
       - ./src:/app/src
-      - ./startupscripts/start_client.sh:/app/start.sh
 
 
-  cloudbox-main:
+  cep-main:
     networks: 
-      - cloudbox
-    image: cloudbox:latest
-    container_name: cloudbox-main 
+      - cep
+    image: cep:latest
+    container_name: cep-main 
     command: >
-      uv run cloudbox server run
+      uv run cep server run
     ports:
       - "8000:8000"
     environment:
-      APP_STORE_HOST_NAME: "cloudbox-appstore"
-      CLOUDBOX_SERVER_TOKEN: "${CLOUDBOX_SERVER_TOKEN}"
+      APP_STORE_HOST_NAME: "cep-appstore"
+      CEP_SERVER_TOKEN: "${CEP_SERVER_TOKEN}"
       DNS_IP: "${DNS_IP}"
       DNS_TOKEN: "${DNS_TOKEN}"
     volumes:
+      # dev
       - ./src:/app/src
 
 
-  cloudbox-appstore:
+  cep-appstore:
     networks: 
-      - cloudbox
-    image: cloudbox:latest
-    container_name: cloudbox-appstore
+      - cep
+    image: cep:latest
+    container_name: cep-appstore
     command: >
-      uv run cloudbox apps run
+      uv run cep apps run
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./src:/app/src
 
 
 networks:
-  cloudbox:
+  cep:
     driver: bridge
 
 

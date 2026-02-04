@@ -13,16 +13,16 @@ import psutil
 import yaml
 from rich import print
 
-from cloudbox.cli.dns import NebulaDNS
-from cloudbox.datamodels import (
+from cep.cli.dns import NebulaDNS
+from cep.datamodels import (
         CertificateRequest,
         HostRequest,
         )
-from cloudbox.utils import (
+from cep.utils import (
         get_executable_path,
         get_template_path,
         )
-from cloudbox.cli.utils import (
+from cep.cli.utils import (
         CLI_DATA_DIR,
         get_client,
         )

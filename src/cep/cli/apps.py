@@ -3,15 +3,24 @@ import typer
 from rich import print
 import uvicorn
 
-from cloudbox.cli.utils import get_client, parse_available
+from cep.cli.utils import get_client, parse_available
 app_store_app = typer.Typer()
 client_proxy = get_client("/apps")
 
 
 @app_store_app.command("run")
 def run():
+    ascii_banner = r"""
+_________  _____________________        _____
+\_   ___ \ \_   _____/\______   \      /  _  \  ______  ______   ______
+/    \  \/  |    __)_  |     ___/     /  /_\  \ \____ \ \____ \ /  ___/
+\     \____ |        \ |    |        /    |    \|  |_> >|  |_> >\___ \
+ \______  //_______  / |____|        \____|__  /|   __/ |   __//____  >
+        \/         \/                        \/ |__|    |__|        \/
+    """
+    print(ascii_banner)
     uvicorn.run(
-        "cloudbox.app_store.main:app",
+        "cep.app_store.main:app",
         host="0.0.0.0",
         port=8080,
         reload=True,

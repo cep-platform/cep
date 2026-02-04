@@ -8,8 +8,8 @@ from subprocess import run
 
 import typer
 
-from cloudbox.cli.utils import get_client
-from cloudbox.datamodels import AddAAAARequest
+from cep.cli.utils import get_client
+from cep.datamodels import AddAAAARequest
 
 
 class NebulaDNS:

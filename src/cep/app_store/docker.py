@@ -8,6 +8,7 @@ import yaml
 from rich import print
 from pydantic import BaseModel
 
+from cep.utils import DATA_DIR
 import logging
 
 from cloudbox.utils import DATA_DIR
@@ -16,7 +17,7 @@ from cloudbox.app_store.utils import dump_logs
 APP_STORE_DATA_DIR = DATA_DIR / 'app_store'
 APP_STORE_DATA_DIR.mkdir(exist_ok=True)
 
-APP_TEMPLATES_PATH = "cloudbox.app_store.app_templates"
+APP_TEMPLATES_PATH = "cep.app_store.app_templates"
 
 DEPLOYMENT_DIR = APP_STORE_DATA_DIR / "docker_deployment"
 DEPLOYMENT_DIR.mkdir(exist_ok=True)

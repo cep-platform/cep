@@ -1,14 +1,14 @@
 import json
 from pathlib import Path
 
-from cloudbox.datamodels import NetworkStore
-from cloudbox.utils import DATA_DIR
+from cep.datamodels import NetworkStore
+from cep.utils import DATA_DIR
 
 
 SERVER_DATA_DIR = DATA_DIR / 'server'
 SERVER_DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = SERVER_DATA_DIR / 'db.json'
-CLOUDBOX_SERVER_CFG_PATH = Path.home() / '.cloudboxservercfg'
+CEP_SERVER_CFG_PATH = Path.home() / '.cepservercfg'
 
 def load_db() -> NetworkStore:
     if not DB_PATH.exists():

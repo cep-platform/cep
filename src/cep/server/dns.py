@@ -4,8 +4,8 @@ from ipaddress import IPv6Address
 import httpx
 from fastapi import APIRouter, Response, HTTPException, Body
 
-from cloudbox.datamodels import AddAAAARequest
-from cloudbox.server.utils import load_db
+from cep.datamodels import AddAAAARequest
+from cep.server.utils import load_db
 
 dns_router = APIRouter(prefix="/dns")
 

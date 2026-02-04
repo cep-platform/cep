@@ -23,6 +23,9 @@ RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /
     && apt-get install -y docker-ce-cli \
     && rm -rf /var/lib/apt/lists/*
 
+COPY ./startupscripts/start_client.sh /app/start.sh
+COPY ./startupscripts/client_banner.txt /app/client_banner.txt
+
 # Copy dependency files first (for caching)
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 COPY pyproject.toml ./
@@ -32,5 +35,5 @@ RUN uv sync
 COPY src/ src/
 RUN uv pip install -e .
 
-CMD ["uv", "run", "cloudbox", "server", "run"]
+CMD ["uv", "run", "cep", "server", "run"]
 
