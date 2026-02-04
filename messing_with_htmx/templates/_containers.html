@@ -1,0 +1,25 @@
+<table>
+    <thead>
+        <tr>
+            <th>ID</th>
+            <th>Name</th>
+            <th>Image</th>
+            <th>Status</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for c in containers %}
+        <tr>
+            <td>{{ c.id[:12] }}</td>
+            <td>{{ c.name }}</td>
+            <td>{{ c.image }}</td>
+            <td>{{ c.status }}</td>
+        </tr>
+    {% else %}
+        <tr>
+            <td colspan="4">No containers running</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+

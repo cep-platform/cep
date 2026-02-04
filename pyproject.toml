@@ -19,4 +19,8 @@ dependencies = [
 cep = "cep.cli.main:app"
 
 [tool.setuptools.package-data]
-cep = ["templates/*.yaml", "app_store/app_templates/*.yaml"]
+cep = [
+    "templates/nebula/*.yaml",
+    "templates/frontend/*.yaml",
+    "app_store/app_templates/*.yaml",
+]

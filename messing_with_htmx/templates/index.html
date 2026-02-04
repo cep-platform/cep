@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+
+{% block content %}
+<h2>Docker Containers</h1>
+
+<button
+    hx-get="/containers"
+    hx-target="#containers"
+    hx-swap="innerHTML"
+>
+    Refresh
+</button>
+
+<div
+    id="containers"
+    hx-get="/containers"
+    hx-trigger="load"
+    hx-swap="innerHTML"
+>
+    {% include "_containers.html" %}
+</div>
+{% endblock %}

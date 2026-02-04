@@ -1,18 +1,19 @@
 from __future__ import annotations
 
+import os
 import platform
 import stat
 import tarfile
 import urllib.request
 import zipfile
-from importlib import resources
+from importlib.resources import files, as_file
 from pathlib import Path
-
-import os
-from result import Result, Ok, Err
 from typing import List
 
+from result import Result, Ok, Err
 from platformdirs import user_data_dir
+
+import cep.templates.frontend
 
 
 APP_NAME = "cep"
@@ -21,6 +22,7 @@ DATA_DIR.mkdir(exist_ok=True, parents=True)
 CACHE_DIR = Path.home() / ".cache" / "nebula"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 APP_TEMPLATE_PATH = os.getcwd() + "/src/cep/app_templates/"
+JINJA_TEMPLATES_DIR = Path(cep.templates.frontend.__file__).parent
 
 CEP_SERVER_CFG_PATH = Path('.cepservercfg')
 
@@ -107,12 +109,13 @@ def get_executable_path(name):
         download_nebula()
     return path
 
-#TODO:replace with db in later iter
+
+# TODO:replace with db in later iter
 def get_available_path_templates(app_name: str) -> Result[List[str], str]:
-    files = [f for f in os.listdir(APP_TEMPLATE_PATH)] 
+    files = [f for f in os.listdir(APP_TEMPLATE_PATH)]
     if len(files) > 0:
         # I assume template naming cannot fail
-        config_match = any([app.split(".yml")[0] == app_name  for app in files])
+        config_match = any([app.split(".yml")[0] == app_name for app in files])
         if config_match:
             return Ok(
                 APP_TEMPLATE_PATH + app_name + ".yml"
@@ -121,9 +124,7 @@ def get_available_path_templates(app_name: str) -> Result[List[str], str]:
 
     return Err("Pointing to inexistent directory")
 
-def get_template_path(name):
-    with resources.as_file(
-            resources.files("cep.templates").joinpath(name)
-            ) as template_path:
+def get_nebula_template_path(name):
+    with as_file(files("cep.templates.nebula").joinpath(name)) as template_path:
         path = Path(template_path)
         return path if path.exists() else None

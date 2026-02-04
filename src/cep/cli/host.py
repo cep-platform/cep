@@ -20,7 +20,7 @@ from cep.datamodels import (
         )
 from cep.utils import (
         get_executable_path,
-        get_template_path,
+        get_nebula_template_path,
         )
 from cep.cli.utils import (
         CLI_DATA_DIR,
@@ -113,7 +113,7 @@ def create(network_name: str,
     with zipfile.ZipFile(io.BytesIO(cert_response.content)) as z:
         z.extractall(host_data_path)
 
-    config_path = get_template_path('config.yml')
+    config_path = get_nebula_template_path('config.yml')
     with open(config_path, 'r') as f:
         config = yaml.safe_load(f)
 

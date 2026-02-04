@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>{% block title %}Dashboard{% endblock %}</title>
+  <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+</head>
+<body>
+  <nav>
+    <a hx-get="/network" hx-target="#content" hx-push-url="true">Networks</a>
+    <a hx-get="/apps" hx-target="#content" hx-push-url="true">Apps</a>
+    <a hx-get="/hosts" hx-target="#content" hx-push-url="true">Hosts</a>
+  </nav>
+
+  <main id="content">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>
