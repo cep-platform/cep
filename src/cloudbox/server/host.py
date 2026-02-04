@@ -5,7 +5,7 @@ import zipfile
 from ipaddress import IPv6Address
 from pathlib import Path
 
-from fastapi import Depends
+from fastapi import APIRouter
 from fastapi.responses import FileResponse
 from fastapi.exceptions import HTTPException
 
@@ -14,15 +14,17 @@ from cloudbox.datamodels import (
         HostRecord,
         CertificateRequest,
         HostRequest,
+        AddAAAARequest
         )
 from cloudbox.server.utils import (
         SERVER_DATA_DIR,
         save_db,
         load_db,
         )
-
-from fastapi import APIRouter
-
+from cloudbox.server.dns import (
+        add_host_to_dns,
+        remove_host_from_dns,
+        )
 
 host_router = APIRouter(prefix="/host")
 
@@ -42,21 +44,32 @@ def create(request: HostRequest) -> HostRecord:
         raise HTTPException(
                 status_code=404,
                 detail=f"Network '{request.network_name}' not found",
-            )
+                )
 
     if network_record.hosts.get(request.name, False):
         raise HTTPException(
                 status_code=409,
                 detail=f"Host '{request.name}' already exists in network '{request.network_name}'",
-            )
+                )
+
+    if len(network_record.hosts) == 0:
+        # First host gets [subnet]::1, the rest gets random ips
+        ip = next(network_record.subnet.hosts())
+    else:
+        ip = random_host_ip(network_record.subnet)
 
     host_record = HostRecord(
             name=request.name,
-            ip=random_host_ip(network_record.subnet),
+            ip=ip,
             groups=[],
             is_lighthouse=request.is_lighthouse,
             public_ip=request.public_ip,
             )
+
+    if request.add_dns_record:
+        domain_name = f"{request.name}.{network_record.name}"
+        aaaa_request = AddAAAARequest(name=domain_name, ip=str(ip))
+        add_host_to_dns(aaaa_request)
 
     network_record.hosts[request.name] = host_record
     save_db(network_store)
@@ -71,11 +84,12 @@ def delete(network_name: str, host_name: str):
     try:
         del network_record.hosts[host_name]
         save_db(network_store)
+        remove_host_from_dns(name=host_name)
     except KeyError:
         raise HTTPException(
                 status_code=404,
                 detail=f"Host {host_name} not found in {network_name}",
-            )
+                )
     return {"status": "deleted"}
 
 
@@ -87,14 +101,14 @@ def show(network_name: str, host_name: str) -> HostRecord:
         raise HTTPException(
                 status_code=404,
                 detail=f"Network {network_name} not found",
-            )
+                )
 
     host_record = network_record.hosts.get(host_name, None)
     if host_record is None:
         raise HTTPException(
                 status_code=404,
                 detail=f"Host {host_name} not found in {network_name}",
-            )
+                )
     return host_record
 
 
@@ -135,7 +149,7 @@ def sign(request: CertificateRequest):
         z.write(ca_cert_path, arcname=ca_cert_path.name)
 
     return FileResponse(
-        zip_path,
-        media_type="application/zip",
-        filename="nebula-certs.zip",
-    )
+            zip_path,
+            media_type="application/zip",
+            filename="nebula-certs.zip",
+            )

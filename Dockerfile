@@ -12,6 +12,7 @@ RUN apt-get update && \
         ca-certificates \
         curl \
         gnupg \
+        iproute2 \
         lsb-release \
         && rm -rf /var/lib/apt/lists/*
 

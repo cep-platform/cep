@@ -20,8 +20,8 @@ def _list():
 
 
 @network_app.command()
-def create(name: str):
-    resp = client.get("/create", params={'name': name})
+def create(name: str, dns: bool = True):
+    resp = client.get("/create", params={'name': name, 'dns': dns})
     resp.raise_for_status()
 
 

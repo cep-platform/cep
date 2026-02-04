@@ -14,17 +14,22 @@ from cloudbox.server.utils import (
         load_db,
         )
 
+from cloudbox.server.dns import (
+        start_dns,
+        stop_dns,
+        )
+
 
 network_router = APIRouter(prefix="/network")
 
 
-def generate_ula_prefix():
+def generate_ula_prefix() -> IPv6Network:
     random_56bits = secrets.randbits(56)
     prefix = (0xfd << 120) | (random_56bits << 64)
     return IPv6Network((prefix, 64))
 
 
-def create_ca(name: str, ca_dir: Path):
+def create_ca(name: str, ca_dir: Path) -> Path:
     nebula_cert_executable_path = get_executable_path('nebula-cert')
     subprocess.run([
         nebula_cert_executable_path,
@@ -46,9 +51,9 @@ def _list() -> list[str]:
 
 
 @network_router.get("/create")
-def create(name: str) -> NetworkRecord:
+def create(name: str, dns: bool) -> NetworkRecord:
     subnet = generate_ula_prefix()
-    network_record = NetworkRecord(name=name, subnet=subnet, hosts={})
+    network_record = NetworkRecord(name=name, subnet=subnet, hosts={}, dns=dns)
 
     network_data_dir = SERVER_DATA_DIR / network_record.name
     network_data_dir.mkdir(exist_ok=True)
@@ -58,6 +63,9 @@ def create(name: str) -> NetworkRecord:
     network_store = load_db()
     network_store.networks[network_record.name] = network_record
     save_db(network_store)
+
+    if dns:
+        start_dns(subnet=str(subnet))
 
     return network_record
 
@@ -75,8 +83,14 @@ def delete(name: str):
     network_store = load_db()
     if name not in network_store.networks:
         raise HTTPException(status_code=404, detail="Network not found")
+    
+    if network_store.networks[name].dns:
+        stop_dns()
+
     del network_store.networks[name]
     save_db(network_store)
+
+    
 
     # Return nothing (204 No Content)
     return
@@ -90,7 +104,6 @@ def show(name: str) -> NetworkRecord:
         return response
     else:
         raise HTTPException(status_code=404, detail="Network not found")
-
 
 
 @network_router.get("/lighthouses")

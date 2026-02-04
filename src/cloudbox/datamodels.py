@@ -12,10 +12,16 @@ from pydantic import (
         )
 
 
+class AddAAAARequest(BaseModel):
+    name: str
+    ip: str
+
+
 class NetworkRecord(BaseModel):
     name: str
     subnet: ipaddress.IPv6Network
     hosts: dict[str, HostRecord]
+    dns: bool
 
     @field_serializer("subnet")
     def serialize_subnet(self, subnet: ipaddress.IPv6Network) -> str:
@@ -83,6 +89,7 @@ class HostRequest(BaseModel):
     network_name: str
     is_lighthouse: bool
     public_ip: Optional[Union[ipaddress.IPv6Address, ipaddress.IPv4Address]] = None
+    add_dns_record: Optional[bool] = True
 
     @model_validator(mode="after")
     def validate_lighthouse_ip(self):

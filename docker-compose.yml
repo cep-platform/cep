@@ -1,24 +1,66 @@
 services:
+
+  cloudbox-dns:
+    build:
+      context: ./unbound
+    network_mode: host
+    container_name: cloudbox-dns 
+    volumes:
+      - unbound-state:/var/lib/unbound
+
+      # dev
+      - ./unbound/service/api.py:/app/api.py
+    restart: unless-stopped
+    command: uvicorn api:app --host 0.0.0.0 --port 8053
+    environment:
+      DNS_TOKEN: "${DNS_TOKEN}"
+    depends_on:
+      - cloudbox-main
+
+
+  cloudbox-client:
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    image: cloudbox:latest
+    container_name: cloudbox-client 
+    command: >
+      /app/start.sh
+    environment:
+      CLOUDBOX_BASE_URL: "${CLOUDBOX_BASE_URL}"
+      CLOUDBOX_SERVER_TOKEN: "${CLOUDBOX_SERVER_TOKEN}"
+      PUBLIC_IP: "${PUBLIC_IP}"
+    depends_on:
+      - cloudbox-main
+    volumes:
+      - ./src:/app/src
+      - ./startupscripts/start_client.sh:/app/start.sh
+
+
   cloudbox-main:
     networks: 
       - cloudbox
-    build:
-      context: .
+    image: cloudbox:latest
     container_name: cloudbox-main 
     command: >
       uv run cloudbox server run
     ports:
       - "8000:8000"
     environment:
-      - APP_STORE_HOST_NAME=cloudbox-appstore
+      APP_STORE_HOST_NAME: "cloudbox-appstore"
+      CLOUDBOX_SERVER_TOKEN: "${CLOUDBOX_SERVER_TOKEN}"
+      DNS_IP: "${DNS_IP}"
+      DNS_TOKEN: "${DNS_TOKEN}"
     volumes:
       - ./src:/app/src
+
 
   cloudbox-appstore:
     networks: 
       - cloudbox
-    build:
-      context: .
+    image: cloudbox:latest
     container_name: cloudbox-appstore
     command: >
       uv run cloudbox apps run
@@ -26,6 +68,12 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - ./src:/app/src
 
+
 networks:
   cloudbox:
     driver: bridge
+
+
+volumes:
+  unbound-state:
+

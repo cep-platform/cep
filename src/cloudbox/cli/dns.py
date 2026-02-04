@@ -1,8 +1,15 @@
-import os
+import re
 import platform
+import socket
 import subprocess
-from pathlib import Path
+import threading
 from typing import List
+from subprocess import run
+
+import typer
+
+from cloudbox.cli.utils import get_client
+from cloudbox.datamodels import AddAAAARequest
 
 
 class NebulaDNS:
@@ -22,10 +29,15 @@ class NebulaDNS:
         if not nebula_dns_ips:
             raise ValueError("nebula_dns_ips must be a non-empty list")
 
-        self.nebula_dns_ips = nebula_dns_ips
+        self.nebula_dns_servers = nebula_dns_ips
+        # self.nebula_dns_servers = ['8.8.8.8', '8.8.4.4']
+        self.system_dns_servers = self.get_current_dns_servers()
         self.iface = nebula_iface
         self.domain = domain
         self.os = platform.system().lower()
+        self._stop_event = threading.Event()
+        self.dns_thread = None
+
 
     # --------------------
     # Public API
@@ -52,11 +64,13 @@ class NebulaDNS:
     # --------------------
 
     def _enable_linux(self):
-        self._run(
-            ["resolvectl", "dns", self.iface, *self.nebula_dns_ips]
+        run(
+            ["resolvectl", "dns", self.iface, *self.nebula_dns_ips],
+            check=True,
         )
-        self._run(
-            ["resolvectl", "domain", self.iface, f'~{self.domain}']
+        run(
+            ["resolvectl", "domain", self.iface, f'~{self.domain}'],
+            check=True,
         )
 
     def _disable_linux(self):
@@ -66,32 +80,127 @@ class NebulaDNS:
     # macOS (scoped resolver)
     # --------------------
 
+    def start_dns(self):
+        upstream = (self.nebula_dns_servers[0], 53)
+
+        sock4 = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock4.bind(("127.0.0.1", 53))  # requires root, or pick 5353 for testing
+
+        sock6 = socket.socket(socket.AF_INET6, socket.SOCK_DGRAM)
+
+        sock4.settimeout(1)  # allows loop to check stop flag
+
+        while not self._stop_event.is_set():
+            try:
+                data, client = sock4.recvfrom(4096)
+            except socket.timeout:
+                continue
+
+            sock6.sendto(data, upstream)
+            resp, _ = sock6.recvfrom(4096)
+            sock4.sendto(resp, client)
+
     def _enable_macos(self):
-        resolver_dir = Path("/etc/resolver")
-        resolver_dir.mkdir(exist_ok=True)
-
-        name = self.domain or "nebula"
-        resolver_file = resolver_dir / name
-
-        lines = ["# Nebula DNS (multiple lighthouses)"]
-        for ip in self.nebula_dns_ips:
-            lines.append(f"nameserver {ip}")
-
-        resolver_file.write_text("\n".join(lines) + "\n")
-        os.chmod(resolver_file, 0o644)
+        self._stop_event.clear()
+        if not self.dns_thread or not self.dns_thread.is_alive():
+            self.dns_thread = threading.Thread(target=self.start_dns, daemon=True)
+            self.dns_thread.start()
+        self.set_dns_servers(['127.0.0.1'])
 
     def _disable_macos(self):
-        resolver_dir = Path("/etc/resolver")
-        name = self.domain or "nebula"
-        resolver_file = resolver_dir / name
-
-        if resolver_file.exists():
-            resolver_file.unlink()
+        self._stop_event.set()
+        if self.dns_thread:
+            self.dns_thread.join(timeout=2)
+        self.set_dns_servers(self.system_dns_servers)
 
     # --------------------
     # Helpers
     # --------------------
 
-    def _run(self, cmd):
-        subprocess.run(cmd, check=True)
+    def _extract_dns_servers(self, scutil_output: str) -> List[str]:
+        """
+        Extract DNS server addresses from `scutil show .../DNS` output.
+        Returns a list of IPs (IPv4 or IPv6).
+        """
+        SERVER_RE = re.compile(r"\b\d+\s*:\s*([0-9a-fA-F:.]+)\b")
+        return SERVER_RE.findall(scutil_output)
 
+    def _run_scutil(self, cmds):
+        return run(
+            ["scutil"],
+            input=cmds,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
+
+    def _get_primary_service_uuid(self):
+
+        primary_service_uuid_command = """\
+open
+show State:/Network/Global/IPv4
+quit
+        """
+
+        res = self._run_scutil(primary_service_uuid_command)
+
+        # try:
+        pattern = r"\b[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\b"
+        match = re.search(pattern, res.stdout)
+        if not match:
+            raise ValueError("Could not determine primary service, which is needed to set the DNS server")
+
+        primary_service_uuid = match.group(0)
+        return primary_service_uuid
+
+    def get_current_dns_servers(self):
+        primary_service_uuid = self._get_primary_service_uuid()
+
+        current_dns_command = f"""\
+open
+show State:/Network/Service/{primary_service_uuid}/DNS
+quit
+        """
+
+        res = self._run_scutil(current_dns_command)
+        return self._extract_dns_servers(res.stdout)
+
+    def set_dns_servers(self, dns_servers: list[str]):
+        primary_service_uuid = self._get_primary_service_uuid()
+        set_dns_command = f"""
+open
+d.init
+d.add ServerAddresses * {' '.join(dns_servers)}
+set State:/Network/Service/{primary_service_uuid}/DNS
+quit
+        """
+        self._run_scutil(set_dns_command)
+
+
+dns_app = typer.Typer()
+client = get_client("/dns")
+
+
+@dns_app.command()
+def start(network_name: str) -> None:
+    request = client.post('/start', json={"network_name": network_name})
+    request.raise_for_status()
+
+
+@dns_app.command()
+def stop() -> None:
+    request = client.post('/stop')
+    request.raise_for_status()
+
+
+@dns_app.command()
+def add(name: str, ip: str) -> None:
+    aaaa_request = AddAAAARequest(name=name, ip=ip)
+    request = client.post('/records', json=aaaa_request.model_dump(mode='json'))
+    request.raise_for_status()
+
+
+@dns_app.command()
+def remove(name: str) -> None:
+    request = client.delete(f'/records/{name}')
+    request.raise_for_status()
