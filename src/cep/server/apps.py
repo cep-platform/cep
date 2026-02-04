@@ -1,5 +1,6 @@
 import os
 
+from typing import Optional
 from fastapi import APIRouter, Response
 import httpx
 
@@ -9,7 +10,7 @@ hostname = os.environ.get("APP_STORE_HOST_NAME", "localhost")
 client = httpx.Client(base_url=f"http://{hostname}:8080")
 
 
-@apps_router.post("/deploy")
+@apps_router.post("/deployProxy")
 def deploy(name: str):
     resp = client.post("/deploy", params={"name": name})
     return Response(
@@ -18,8 +19,8 @@ def deploy(name: str):
         headers=resp.headers,
     )
 
-@apps_router.get("/listAvailable")
-def _list_available():
+@apps_router.get("/listAvailableProxy")
+def _list_available_proxy():
     resp = client.get("/listAvailable")
     return Response(
         content=resp.content,
@@ -27,9 +28,39 @@ def _list_available():
         headers=resp.headers,
     )
 
-@apps_router.get("/listUp")
-def _list_up():
-    resp = client.get("/listUp")
+@apps_router.get("/debugUpProxy")
+def _debug_up_proxy(name: str):
+    resp = client.get("/debugUp", params={"name": name})
+
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers=resp.headers,
+    )
+
+@apps_router.get("/listUpProxy")
+def _list_up_proxy():
+    resp = client.get("listUp")
+
+    return Response(
+            content=resp.content,
+            status_code=resp.status_code,
+            headers=resp.headers,
+        )
+
+#NOTE: still gets time outs despite async def debug later
+@apps_router.delete("/targetedDestroyProxy")
+async def _targeted_destroy_proxy(name: str):
+    resp = client.delete("/targetedDestroy", params={"name": name})
+    return Response(
+        content=resp.content,
+        status_code=resp.status_code,
+        headers=resp.headers,
+    )
+
+@apps_router.delete("/clearProxy")
+async def _delete_proxy():
+    resp = client.delete("/clear")
     return Response(
         content=resp.content,
         status_code=resp.status_code,
