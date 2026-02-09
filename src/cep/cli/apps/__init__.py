@@ -4,11 +4,15 @@ from rich import print
 import uvicorn
 
 from cep.cli.utils import get_client, parse_available
-app_store_app = typer.Typer()
+from cep.cli.apps.store import store_app
+
+apps_app = typer.Typer()
+apps_app.add_typer(store_app, name="store")
+
 client_proxy = get_client("/apps")
 
 
-@app_store_app.command("run")
+@apps_app.command()
 def run():
     ascii_banner = r"""
 _________  _____________________        _____
@@ -20,7 +24,7 @@ _________  _____________________        _____
     """
     print(ascii_banner)
     uvicorn.run(
-        "cep.app_store.main:app",
+        "cep.apps.main:app",
         host="0.0.0.0",
         port=8080,
         reload=True,
@@ -28,20 +32,12 @@ _________  _____________________        _____
 
 
 #TODO: async loop
-@app_store_app.command("deploy")
+@apps_app.command("deploy")
 def _deploy(name_arr: list[str]) -> str | None:
     for name in name_arr:
         resp = client_proxy.post("/deployProxy", params={'name': name})
         resp.raise_for_status()
 
-
-@app_store_app.command("list-available")
-def _list_available():
-    resp = client_proxy.get("/listAvailableProxy")
-    resp.raise_for_status()
-    apps = resp.json()
-    if apps:
-        print('\n'.join(apps))
 
 #TODO:
 # - Debug == True runs ps needs to be parsed in some logging system
@@ -51,8 +47,8 @@ def _list_available():
 #      - returns array of up apps where |up| <= |available|
 #      - just read deployment path on list up
 #      - i.e compose_services.services.keys() --> thats it
-@app_store_app.command("debug-up")
-def _debug_up(verbose: Optional[bool]=typer.Argument(default=False),
+@apps_app.command()
+def debug_up(verbose: Optional[bool]=typer.Argument(default=False),
              name: Optional[str]=typer.Argument(default=None)  
              ):
     """
@@ -72,8 +68,8 @@ def _debug_up(verbose: Optional[bool]=typer.Argument(default=False),
     else:
         print("No apps running, run deploy to deploy some")
 
-@app_store_app.command("list-up")
-def _list_up():
+@apps_app.command("list")
+def _list():
     """
     Reads config to check which apps are running,
         Might be inconsistent, when in doubt run debug-up
@@ -82,8 +78,8 @@ def _list_up():
     resp.raise_for_status()
     print("Apps up: \n", resp.content)
 
-@app_store_app.command("targeted-destroy")
-def _targeted_destroy(name_arr: list[str]):
+@apps_app.command()
+def targeted_destroy(name_arr: list[str]):
     """
     Unlike clear, this applies compose down *ONLY* on selected apps
     is async but time-out errors occur need to check whats up with that
@@ -93,8 +89,8 @@ def _targeted_destroy(name_arr: list[str]):
         resp.raise_for_status()
 
 #TODO: async + with docker compose for all apps
-@app_store_app.command("clear")
-def _clear():
+@apps_app.command()
+def clear():
     """
     Downs all apps
     """

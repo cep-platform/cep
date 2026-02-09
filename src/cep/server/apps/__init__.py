@@ -4,7 +4,10 @@ from typing import Optional
 from fastapi import APIRouter, Response
 import httpx
 
+from cep.server.apps.store import store_router
+
 apps_router = APIRouter(prefix="/apps")
+apps_router.include_router(store_router)
 
 hostname = os.environ.get("APP_STORE_HOST_NAME", "localhost")
 client = httpx.Client(base_url=f"http://{hostname}:8080")
@@ -13,15 +16,6 @@ client = httpx.Client(base_url=f"http://{hostname}:8080")
 @apps_router.post("/deployProxy")
 def deploy(name: str):
     resp = client.post("/deploy", params={"name": name})
-    return Response(
-        content=resp.content,
-        status_code=resp.status_code,
-        headers=resp.headers,
-    )
-
-@apps_router.get("/listAvailableProxy")
-def _list_available_proxy():
-    resp = client.get("/listAvailable")
     return Response(
         content=resp.content,
         status_code=resp.status_code,
@@ -40,7 +34,7 @@ def _debug_up_proxy(name: str):
 
 @apps_router.get("/listUpProxy")
 def _list_up_proxy():
-    resp = client.get("listUp")
+    resp = client.get("list")
 
     return Response(
             content=resp.content,

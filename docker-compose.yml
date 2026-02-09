@@ -14,8 +14,6 @@ services:
     command: uvicorn api:app --host 0.0.0.0 --port 8053
     environment:
       DNS_TOKEN: "${DNS_TOKEN}"
-    depends_on:
-      - cep-main
 
 
   cep-client:
