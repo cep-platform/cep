@@ -1,9 +1,11 @@
+import datetime
 import io
 import json
 import os
 import shutil
 import signal
 import subprocess
+import tempfile
 import time
 import typer
 import zipfile
@@ -12,6 +14,7 @@ from pathlib import Path
 import psutil
 import yaml
 from rich import print
+from pydantic import BaseModel
 
 from cep.cli.dns import NebulaDNS
 from cep.datamodels import (
@@ -33,6 +36,76 @@ client = get_client("/host")
 host_app = typer.Typer()
 
 
+class CepBundle(BaseModel):
+    host_name: str
+    priv_key_path: Path
+    pub_key_path: Path
+    crt_path: Path
+    ca_crt_path: Path
+    config_out_path: Path
+
+    def generate_metadata(self):
+        metadata = json.loads(get_template_path('bundle.json').read_text())
+
+        metadata['created_at'] = datetime.datetime.now().isoformat()
+
+        metadata['backends']['nebula']['config_file'] = self.config_out_path.name
+        metadata['backends']['nebula']['files']['ca'] = self.ca_crt_path.name
+        metadata['backends']['nebula']['files']['cert'] = self.crt_path.name
+        metadata['backends']['nebula']['files']['key'] = self.priv_key_path.name
+
+        return metadata
+
+    def create_artifact(self) -> Path:
+        """
+        Create a .cepbundle zip artifact in the current working directory.
+
+        Returns:
+            Path to the created bundle file
+        """
+        metadata = self.generate_metadata()
+
+        output_name = f"{self.host_name}.cepbundle"
+        output_path = Path.cwd() / output_name
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir = Path(tmpdir)
+
+            # -----------------
+            # Create layout
+            # -----------------
+            nebula_dir = tmpdir / "nebula"
+            nebula_dir.mkdir(parents=True, exist_ok=True)
+
+            # -----------------
+            # Copy Nebula files
+            # -----------------
+            shutil.copy2(self.config_out_path, nebula_dir / self.config_out_path.name)
+            shutil.copy2(self.ca_crt_path, nebula_dir / self.ca_crt_path.name)
+            shutil.copy2(self.crt_path, nebula_dir / self.crt_path.name)
+            shutil.copy2(self.priv_key_path, nebula_dir / self.priv_key_path.name)
+
+            # -----------------
+            # Write bundle.json
+            # -----------------
+            bundle_json_path = tmpdir / "bundle.json"
+            bundle_json_path.write_text(
+                json.dumps(metadata, indent=2),
+                encoding="utf-8",
+            )
+
+            # -----------------
+            # Create zip artifact
+            # -----------------
+            with zipfile.ZipFile(output_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                for path in tmpdir.rglob("*"):
+                    # Preserve relative paths inside the zip
+                    arcname = path.relative_to(tmpdir)
+                    zf.write(path, arcname)
+
+        return output_path
+
+
 @host_app.command("list")
 def _list(network_name: str, data_dir: Path = CLI_DATA_DIR):
     network_dir = data_dir / network_name
@@ -47,7 +120,8 @@ def create(network_name: str,
            host_name: str,
            am_lighthouse: bool = False,
            public_ip: str = None,
-           output_dir: Path = CLI_DATA_DIR
+           output_dir: Path = CLI_DATA_DIR,
+           bundle: bool = False,
            ) -> list[Path]:
 
     if am_lighthouse and not public_ip:
@@ -70,20 +144,23 @@ def create(network_name: str,
     host_data_path = network_path / host_name
     host_data_path.mkdir(exist_ok=True, parents=True)
 
-    priv_key_path = host_data_path / f'{host_name}.key'
-    pub_key_path = host_data_path / f'{host_name}.pub'
-    crt_path = host_data_path / f'{host_name}.crt'
-    ca_crt_path = host_data_path / 'ca.crt'
-    config_out_path = host_data_path / 'config.yml'
+    cep_bundle = CepBundle(
+            host_name=host_name,
+            priv_key_path=host_data_path / f'{host_name}.key',
+            pub_key_path=host_data_path / f'{host_name}.pub',
+            crt_path=host_data_path / f'{host_name}.crt',
+            ca_crt_path=host_data_path / 'ca.crt',
+            config_out_path=host_data_path / 'config.yml',
+            )
 
     subprocess.run([
         nebula_cert_executable_path,
         'keygen',
-        '-out-key', priv_key_path,
-        '-out-pub', pub_key_path,
+        '-out-key', cep_bundle.priv_key_path,
+        '-out-pub', cep_bundle.pub_key_path,
         ], capture_output=True, text=True)
 
-    with open(pub_key_path, 'r') as f:
+    with open(cep_bundle.pub_key_path, 'r') as f:
         pub_key = f.read()
 
     host_request = HostRequest(
@@ -113,14 +190,14 @@ def create(network_name: str,
     with zipfile.ZipFile(io.BytesIO(cert_response.content)) as z:
         z.extractall(host_data_path)
 
-    config_path = get_template_path('config.yml')
-    with open(config_path, 'r') as f:
+    config_template_path = get_template_path('config.yml')
+    with open(config_template_path, 'r') as f:
         config = yaml.safe_load(f)
 
     pki = {
-            'key': str(priv_key_path),
-            'cert': str(crt_path),
-            'ca': str(ca_crt_path),
+            'key': str(cep_bundle.priv_key_path),
+            'cert': str(cep_bundle.crt_path),
+            'ca': str(cep_bundle.ca_crt_path),
             }
 
     config['pki'] = pki
@@ -139,8 +216,11 @@ def create(network_name: str,
                                 'hosts': list(static_host_map.keys())
                                 }
 
-    with open(config_out_path, 'w') as f:
+    with open(cep_bundle.config_out_path, 'w') as f:
         yaml.safe_dump(config, f)
+
+    if bundle:
+        cep_bundle.create_artifact()
 
 
 @host_app.command()
