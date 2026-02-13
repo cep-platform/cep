@@ -1,0 +1,20 @@
+{
+  "format": "cep-bundle",
+  "format_version": 1,
+
+  "bundle_id": "",
+  "created_at": "",
+
+  "backends": {
+    "nebula": {
+      "enabled": true,
+      "path": "nebula/",
+      "config_file": "config.yml",
+      "files": {
+        "ca": "ca.crt",
+        "cert": "client.crt",
+        "key": "client.key"
+      }
+    }
+  }
+}
