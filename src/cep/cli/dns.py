@@ -68,7 +68,7 @@ class NebulaDNS:
 
     def _enable_linux(self):
         run(
-            ["resolvectl", "dns", self.iface, *self.nebula_dns_ips],
+            ["resolvectl", "dns", self.iface, *self.nebula_dns_servers],
             check=True,
         )
         run(
