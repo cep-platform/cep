@@ -31,10 +31,13 @@ class NebulaDNS:
 
         self.nebula_dns_servers = nebula_dns_ips
         # self.nebula_dns_servers = ['8.8.8.8', '8.8.4.4']
-        self.system_dns_servers = self.get_current_dns_servers()
+
         self.iface = nebula_iface
         self.domain = domain
         self.os = platform.system().lower()
+        if self.os == "darwin":
+            self.system_dns_servers = self.get_current_dns_servers()
+
         self._stop_event = threading.Event()
         self.dns_thread = None
 
@@ -65,7 +68,7 @@ class NebulaDNS:
 
     def _enable_linux(self):
         run(
-            ["resolvectl", "dns", self.iface, *self.nebula_dns_ips],
+            ["resolvectl", "dns", self.iface, *self.nebula_dns_servers],
             check=True,
         )
         run(
