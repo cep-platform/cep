@@ -37,6 +37,11 @@ NEBULA_DOWNLOAD_CONFIG = {
         "archive_type": "zip",
         "sha256": "…",
     },
+    "darwin-arm64": {
+        "url": f"https://github.com/slackhq/nebula/releases/download/v{NEBULA_VERSION}/nebula-darwin.zip",
+        "archive_type": "zip",
+        "sha256": "…",
+    },
 }
 
 
@@ -76,7 +81,7 @@ def extract_archive(
 def download_nebula():
 
     platform_name = get_platform()
-
+ 
     nebula_download_config = NEBULA_DOWNLOAD_CONFIG.get(platform_name, None)
     if nebula_download_config is None:
         raise RuntimeError(f"Unsupported platform: {platform_name}")
