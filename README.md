@@ -1,117 +1,120 @@
-# Cep (Needs an actual name)
+# Cep
 
-### TLDR for running the apps service
+Cep is an application for securely deploying web apps on a server. It creates and manages [Nebula](https://github.com/slackhq/nebula) peer-to-peer VPN networks and deploys Docker containers for web applications.
+
+## Features
+
+- **Network Management**: Create and manage Nebula VPN networks
+- **Host Management**: Create and connect hosts to networks
+- **App Deployment**: Deploy Docker containers via the app store
+- **Internal DNS**: Unbound-based internal DNS resolution
+
+## Architecture
+
+Cep consists of four components:
+
+| Component | Port | Description |
+|-----------|------|------------|
+| cep-main | 8000 | FastAPI server - network/host/storage/DNS management |
+| cep-appstore | 8000 | FastAPI server - Docker container deployment |
+| cep-client | - | Nebula peer connecting to VPN network |
+| cep-dns | 8053 | Unbound DNS for internal resolution |
+
+## Quick Start
+
+### Docker (Recommended)
+
+```bash
+docker build . -t cep:latest
+docker compose up
 ```
 
-# start the main server
-uv run cep server set-auth-token
-uv run cep server run  
+### Manual (Development)
 
-# in a second shell, start the app store server
-uv run cep apps run
+Requires three terminal sessions:
 
-# in a third shell:
-uv run cep apps list
-uv run cep apps deploy redis
-
-```
-Or as a docker deployment:
-```
-docker compose up --build 
-
-# In a second shell (or use -d)
-uv run cep apps list
-uv run cep apps deploy redis
-```
-
-### intro
-Cep is an application that does three things at the moment:
-- Create and manage nebula peer to peer networks
-- Create and manage host on these networks
-- Manage and deploy docker containers to run webapps
-
-It's purpose is to provide a easy to use, zero technical knowledge required way to securely deploy web apps on a server. To do this it uses [nebula](https://github.com/slackhq/nebula) to manage network access. Since nebula proves identity through mutual TLS, it is intended to be used as an identity source for the webapps through OIDC as well, but this is for later, when web app deployment and access is stable. 
-
-You're currently in the branch for development of the app store, which, in order to deploy the webapps, manages a docker compose file and handles deployment. You can use it through some fastapi endpoints.
-Since the app store requires access to the docker socket, it'll need to be easy to isolate later, as an exposed docker socket is a known privilege escalation vector.
-Because of this, the apps store can be ran separately from the main service. 
-
-To install it for development
-```
+**Terminal 1** - Main server:
+```bash
+export CEP_SERVER_TOKEN=your_secure_token
 uv sync
-uv pip install -e .
+uv run cep server run
 ```
 
-You can now run
-```
-uv run cep --help
-```
-
-### Main and Apps services
-Start api
-```
-uv run cep server set-auth-token # not secure but good enough for now
-uv run cep server run  # start the main server
-# in a different shell:
-uv run cep apps run  # start the app store server
+**Terminal 2** - App store (requires docker.sock):
+```bash
+uv sync
+uv run cep apps run
 ```
 
-### CLI
-You can now use the cli:
-```
-# run the cli
-uv run cep auth   # provide the url as follows: http://<ip/hostname/localhost>:8000 (no quotationmarks)
+**Terminal 3** - Client:
+```bash
+# Create network
+uv run cep network create mynetwork --no-dns
+
+# Create lighthouse (first host must be lighthouse)
+uv run cep host create mynetwork server --am-lighthouse --public-ip 203.0.113.1
+
+# Connect lighthouse
+uv run cep host connect mynetwork server
+
+# Additional hosts can be regular (non-lighthouse)
+uv run cep host create mynetwork laptop
+uv run cep host connect mynetwork laptop
 ```
 
-First create a network
-```
-# create a network
-uv run cep network create <networkname>
-uv run cep network list
+## CLI Commands
+
+### Network
+```bash
+uv run cep network create <name>        # Create a network
+uv run cep network list                 # List networks
+uv run cep network show <name>       # Show network details
+uv run cep network delete <name>       # Delete a network
 ```
 
-Create a host:
+### Host
+```bash
+uv run cep host create <network> <host> [--am-lighthouse --public-ip <ip>]
+uv run cep host connect <network> <host>
+uv run cep host disconnect
+uv run cep host list <network>
+uv run cep host show <network> <host>
+uv run cep host delete <network> <host>
 ```
-# create a host and connect (first one needs to be a lighthouse)
-uv run cep host create <network-name> <host-name> [--am-lighthouse --public-ip <public-ip>]
-uv run cep host connect <network-name> <host-name>  # this requires sudo privileges
-```
-The first host needs to be a lighthouse (a host with some stable ip). If you want to test if things work, you can create a lighthouse host and connect with it, but to actually test the connectivity, you'll need some additional hosts. Some ways to run a couple of hosts with different ips:
-- a number of cloud instances
-- a couple of vms (vmware, virt-manager, qemu, incus)
-- Connect a bunch of old laptops to the same network
-
-Incus is nice because it's super lightweight, but you could also set things up with virt-manager/virtualbox/vmware etc. 
-You'll only need three hosts to test almost anything network related though: a lighthouse and two regular host to test host interactions.
-
 
 ### Apps
-Currently you can do the following:
-- list apps
-- deploy one of those apps (meaning deploy the compose file managed on the host running the app store service)
-
-The app store currently deploys apps to serve on all interfaces (of the host on which you deploy the app store service), so you don't need to create or be connected to a nebula network to access the webapps. That's only for development use though, in the end networking and apps should integrate for security purposes.
-
-List available app templates:
-```
-uv run cep apps list
+```bash
+uv run cep apps list                  # List available app templates
+uv run cep apps deploy <app>          # Deploy an app
 ```
 
-Start an app:
-```
-uv run cep apps deploy redis
-```
-
-You should now see redis when you run `docker ps`
-
-That's it, destroying apps needs to be done using docker itself, it hasn't been added to the API yet.
-```
-docker ps -q | xargs docker stop
-docker ps -aq | xargs docker rm
+### DNS
+```bash
+uv run cep dns start <network>        # Start DNS for network
+uv run cep dns stop               # Stop DNS
+uv run cep dns add <name> <ip>   # Add DNS record
+uv run cep dns remove <name>     # Remove DNS record
 ```
 
-Check out the issues!
+## Environment Variables
 
+| Variable | Description |
+|----------|------------|
+| CEP_SERVER_TOKEN | Token for main server authentication |
+| DNS_TOKEN | Token for DNS server authentication |
+| CEP_BASE_URL | URL of main server for client |
+| PUBLIC_IP | Public IP of the host |
 
-## Architecture diagram
-![Architecture Diagram](./assets/architecture.png)
+## About Lighthouses
+
+A lighthouse is a host with a stable public IP that coordinates connections between hosts behind NAT. It enables UDP hole punching for peer-to-peer connectivity.
+
+- The first host in a network must be a lighthouse
+- In Docker deployment, the server itself acts as the lighthouse
+- For connectivity outside your home network, run a lighthouse on a public VPS with a stable IP
+
+## Security Considerations
+
+- The app store requires access to the Docker socket (`/var/run/docker.sock`) - this is a known privilege escalation vector
+- Token-based authentication is used between components
+- In production, isolate the app store in its own security context
