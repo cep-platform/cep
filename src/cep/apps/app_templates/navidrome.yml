@@ -6,10 +6,12 @@ services:
       - "4533:4533"
     restart: unless-stopped
     volumes:
-      - data:/data
-      - music:/music:ro
+      - default_data:/data
+      - default_music:/music:ro
 
 volumes:
-  data:
-  music:
+  default_data:
+    external: true
+  default_music:
+    external: true
 

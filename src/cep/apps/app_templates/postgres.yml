@@ -9,8 +9,9 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - default_postgres-data:/var/lib/postgresql/data
     restart: unless-stopped
 
 volumes:
-  postgres-data:
+  default_postgres-data:
+    external: true
