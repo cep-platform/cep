@@ -1,29 +1,20 @@
 # Cep (Needs an actual name)
 
-### TLDR for running the apps service
+Set the values in .env after `cp .env.example .env`
+
+Can be ran in two ways.
+Docker:
+```
+docker build . -t cep:latest
+docker compose up
 ```
 
-# start the main server
-uv run cep server set-auth-token
-uv run cep server run  
 
-# in a second shell, start the app store server
-uv run cep apps run
 
-# in a third shell:
-uv run cep apps list
-uv run cep apps deploy redis
 
-```
-Or as a docker deployment:
-```
-docker compose up --build 
 
-# In a second shell (or use -d)
-uv run cep apps list
-uv run cep apps deploy redis
-```
 
+VVVVV OUTDATED VVVVVVVVV
 ### intro
 Cep is an application that does three things at the moment:
 - Create and manage nebula peer to peer networks
