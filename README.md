@@ -28,8 +28,13 @@ Cep consists of four components:
 cp .env.example .env
 # Make sure to set LIGHTHOUSE_STABLE_IP
 
+uv sync
+uv pip install -e .
+
 docker build . -t cep:latest
-docker compose up
+docker compose up -d
+
+uv run cep network list
 ```
 
 ### Manual (Development, skip unless docker deployment fails for some reason)
