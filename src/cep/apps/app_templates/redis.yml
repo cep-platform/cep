@@ -5,11 +5,10 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - default_redis-data:/data
+      - redis-data:/data
     command: redis-server --appendonly yes
     restart: unless-stopped
 
 volumes:
-  default_redis-data:
-    external: true
+  redis-data:
 

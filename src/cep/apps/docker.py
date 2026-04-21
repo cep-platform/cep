@@ -78,7 +78,7 @@ class Docker():
             raise ValueError(msg)
 
     @staticmethod
-    def add_to_deployment_file(app_config: ComposeConfig, auto_create_volumes: bool = True):
+    def add_to_deployment_file(app_config: ComposeConfig):
 
         # NOTE: why do we always check the config for entire dir?
         # Example: I want to deploy mango but apps no.1, 2 and entire dir is checked first at O(n^2)
@@ -87,51 +87,9 @@ class Docker():
         for top_level_key in ComposeConfig.__fields__.keys():
             top_level_deployment_config = getattr(deployment_config, top_level_key)
             top_level_app_config = getattr(app_config, top_level_key)
-            
-            # Handle volumes specially - preserve external flag
-            if top_level_key == 'volumes':
-                for key, value in top_level_app_config.items():
-                    existing = top_level_deployment_config.get(key, {})
-                    is_external = value.get('external', False)
-                    top_level_deployment_config[key] = {'external': is_external}
-                    
-                    # Auto-create external volumes in CEP storage
-                    if auto_create_volumes and is_external:
-                        Docker._ensure_volume_exists(key)
-            else:
-                for key, value in top_level_app_config.items():
-                    top_level_deployment_config[key] = value
+            for key, value in top_level_app_config.items():
+                top_level_deployment_config[key] = value
         deployment_config.save(DEPLOYMENT_PATH)
-
-    @staticmethod
-    def _ensure_volume_exists(volume_name: str) -> None:
-        """Ensure a CEP-managed volume exists, creating if necessary.
-        
-        Naming convention: <pool>_<volumename> (e.g., default_redis-data)
-        - If there's an underscore, split on the last underscore
-        - Pool is the part before _, volume is the part after
-        - If no underscore, pool defaults to 'default'
-        """
-        from cep.storage.docker import Volume, Pool
-        
-        # Parse volume name
-        if '_' in volume_name:
-            pool_name, vol_name = volume_name.rsplit('_', 1)
-        else:
-            pool_name = 'default'
-            vol_name = volume_name
-        
-        # Ensure pool exists
-        pool = Pool(pool_name)
-        if not pool.exists():
-            pool.create()
-        
-        # Ensure volume exists
-        volume = Volume(pool_name, vol_name)
-        try:
-            volume.create()
-        except ValueError:
-            pass  # Already exists
 
     @staticmethod
     def update_deployment_file(name: str):
