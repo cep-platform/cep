@@ -25,11 +25,14 @@ Cep consists of four components:
 ### Docker (Recommended)
 
 ```bash
+cp .env.example .env
+# Make sure to set LIGHTHOUSE_STABLE_IP
+
 docker build . -t cep:latest
 docker compose up
 ```
 
-### Manual (Development)
+### Manual (Development, skip unless docker deployment fails for some reason)
 
 Requires three terminal sessions:
 
@@ -65,6 +68,9 @@ uv run cep host connect mynetwork laptop
 ## CLI Commands
 
 ### Network
+
+Before you start, make sure `CEP_SERVER_URL` is pointing to your server in .env and `CEP_SERVER_TOKEN` is set correctly
+
 ```bash
 uv run cep network create <name>        # Create a network
 uv run cep network list                 # List networks
@@ -102,8 +108,8 @@ uv run cep dns remove <name>     # Remove DNS record
 |----------|------------|
 | CEP_SERVER_TOKEN | Token for main server authentication |
 | DNS_TOKEN | Token for DNS server authentication |
-| CEP_BASE_URL | URL of main server for client |
-| PUBLIC_IP | Public IP of the host |
+| CEP_SERVER_URL | URL of main server for client |
+| LIGHTHOUSE_STABLE_IP | Public IP of the host |
 
 ## About Lighthouses
 
