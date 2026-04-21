@@ -27,9 +27,9 @@ services:
     command: >
       /app/start.sh
     environment:
-      CEP_BASE_URL: "${CEP_BASE_URL}"
+      CEP_SERVER_URL: "${CEP_SERVER_URL}"
       CEP_SERVER_TOKEN: "${CEP_SERVER_TOKEN}"
-      PUBLIC_IP: "${PUBLIC_IP}"
+      LIGHTHOUSE_STABLE_IP: "${LIGHTHOUSE_STABLE_IP}"
     depends_on:
       - cep-main
     volumes:

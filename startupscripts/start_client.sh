@@ -18,7 +18,7 @@ HOST_NAME="${HOST_NAME:-mainserver}"
 uv run cep network create "$NETWORK_NAME" --no-dns
 
 # Create a user for the server
-uv run cep host create "$NETWORK_NAME" "$HOST_NAME" --am-lighthouse --public-ip $PUBLIC_IP
+uv run cep host create "$NETWORK_NAME" "$HOST_NAME" --am-lighthouse --public-ip $LIGHTHOUSE_STABLE_IP
 uv run cep host connect "$NETWORK_NAME" "$HOST_NAME" &
 
 pid=$!

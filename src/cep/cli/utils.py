@@ -13,7 +13,7 @@ CLI_DATA_DIR.mkdir(exist_ok=True)
 
 def get_client(path: str = None) -> httpx.Client:
 
-    BASE_URL = os.environ.get("CEP_BASE_URL", "http://localhost:8000")
+    BASE_URL = os.environ.get("CEP_SERVER_URL", "http://localhost:8000")
 
     if path:
         BASE_URL = BASE_URL + path
