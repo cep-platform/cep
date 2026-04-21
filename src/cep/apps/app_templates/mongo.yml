@@ -8,9 +8,8 @@ services:
     ports:
       - "27017:27017"
     volumes:
-      - default_mongo-data:/data/db
+      - mongo-data:/data/db
     restart: unless-stopped
 
 volumes:
-  default_mongo-data:
-    external: true
+  mongo-data:
