@@ -11,7 +11,7 @@ client = get_client("/storage/volumes")
 
 @volume_app.command('create')
 def create(pool_name: str, name: str):
-    resp = client.get("/create", params={'pool_name': pool_name, 'name': name})
+    resp = client.post("/create", params={'pool_name': pool_name, 'name': name})
     resp.raise_for_status()
 
 
