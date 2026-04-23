@@ -63,8 +63,11 @@ services:
     container_name: cep-appstore
     command: >
       uv run cep apps run
+    environment:
+      CEP_STORAGE_PATH: "${CEP_STORAGE_PATH:-/var/lib/cep/storage}"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - ${CEP_STORAGE_PATH:-/var/lib/cep/storage}:${CEP_STORAGE_PATH:-/var/lib/cep/storage}
       - ./src:/app/src
 
 

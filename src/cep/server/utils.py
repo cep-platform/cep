@@ -1,13 +1,14 @@
 import json
 from pathlib import Path
 
-from cep.datamodels import NetworkStore
+from cep.datamodels import NetworkStore, StorageStore
 from cep.utils import DATA_DIR
 
 
 SERVER_DATA_DIR = DATA_DIR / 'server'
 SERVER_DATA_DIR.mkdir(exist_ok=True)
 DB_PATH = SERVER_DATA_DIR / 'db.json'
+STORAGE_DB_PATH = SERVER_DATA_DIR / 'storage_db.json'
 CEP_SERVER_CFG_PATH = Path.home() / '.cepservercfg'
 
 def load_db() -> NetworkStore:
@@ -22,6 +23,26 @@ def load_db() -> NetworkStore:
 
 def save_db(store: NetworkStore) -> None:
     with DB_PATH.open("w", encoding="utf-8") as f:
+        json.dump(
+            store.model_dump(),
+            f,
+            indent=2,
+            sort_keys=True,
+        )
+
+
+def load_storage_db() -> StorageStore:
+    if not STORAGE_DB_PATH.exists():
+        return StorageStore()
+
+    with STORAGE_DB_PATH.open("r", encoding="utf-8") as f:
+        raw = json.load(f)
+
+    return StorageStore.model_validate(raw)
+
+
+def save_storage_db(store: StorageStore) -> None:
+    with STORAGE_DB_PATH.open("w", encoding="utf-8") as f:
         json.dump(
             store.model_dump(),
             f,

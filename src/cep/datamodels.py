@@ -111,6 +111,24 @@ class AppStoreSpinupReport(BaseModel):
     container_list: List[Container]
 
 
+class PoolRecord(BaseModel):
+    name: str
+    path: str
+    created_at: str
+
+
+class VolumeRecord(BaseModel):
+    name: str
+    pool_name: str
+    host_path: str
+    created_at: str
+
+
+class StorageStore(BaseModel):
+    pools: dict[str, PoolRecord] = {}
+    volumes: dict[str, VolumeRecord] = {}
+
+
 class AppStoreMeshPrivileges(Enum):
     #TODO: finish implementing this properly after discussing with team
     EditStore = 0
