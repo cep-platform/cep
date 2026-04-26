@@ -35,5 +35,8 @@ RUN uv sync
 COPY src/ src/
 RUN uv pip install -e .
 
+# Pre-download nebula binaries and set execute permissions at build time
+RUN uv run python -c "from cep.utils import download_nebula; download_nebula()"
+
 CMD ["uv", "run", "cep", "server", "run"]
 
