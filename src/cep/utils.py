@@ -32,7 +32,17 @@ NEBULA_DOWNLOAD_CONFIG = {
         "archive_type": "tar.gz",
         "sha256": "…",
     },
+    "linux-arm64": {
+        "url": f"https://github.com/slackhq/nebula/releases/download/v{NEBULA_VERSION}/nebula-linux-arm64.tar.gz",
+        "archive_type": "tar.gz",
+        "sha256": "…",
+    },
     "darwin-amd64": {
+        "url": f"https://github.com/slackhq/nebula/releases/download/v{NEBULA_VERSION}/nebula-darwin.zip",
+        "archive_type": "zip",
+        "sha256": "…",
+    },
+    "darwin-arm64": {
         "url": f"https://github.com/slackhq/nebula/releases/download/v{NEBULA_VERSION}/nebula-darwin.zip",
         "archive_type": "zip",
         "sha256": "…",
@@ -45,15 +55,15 @@ def get_platform():
     system = platform.system().lower()
 
     if system == "linux" and machine in ("x86_64", "amd64"):
-        platform_name = "linux-amd64"
+        return "linux-amd64"
+    elif system == "linux" and machine in ("arm64", "aarch64"):
+        return "linux-arm64"
     elif system == "darwin" and machine in ("arm64", "aarch64"):
-        platform_name = "darwin-arm64"
+        return "darwin-arm64"
     elif system == "darwin":
-        platform_name = "darwin-amd64"
-    elif system == "windows":
-        platform_name = "windows-amd64.exe"
-
-    return platform_name
+        return "darwin-amd64"
+    else:
+        raise RuntimeError(f"Unsupported platform: {system}-{machine}")
 
 
 def extract_archive(
@@ -94,7 +104,7 @@ def download_nebula():
                 target_dir=CACHE_DIR,
                 )
         nebula_path.chmod(nebula_path.stat().st_mode | stat.S_IEXEC)
-        nebula_path.chmod(nebula_cert_path.stat().st_mode | stat.S_IEXEC)
+        nebula_cert_path.chmod(nebula_cert_path.stat().st_mode | stat.S_IEXEC)
         archive_path.unlink()
 
 
