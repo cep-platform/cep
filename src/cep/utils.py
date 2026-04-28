@@ -8,6 +8,7 @@ import zipfile
 from importlib import resources
 from pathlib import Path
 
+import json
 import os
 from result import Result, Ok, Err
 from typing import List
@@ -137,3 +138,12 @@ def get_template_path(name):
             ) as template_path:
         path = Path(template_path)
         return path if path.exists() else None
+
+def parse_stdout(stream: str) -> dict[str, str] | str:
+    try:
+        json_stdout = json.loads(stream)
+    except json.JSONDecodeError as e:
+        print(f"Invalid JSON encountered, stripping os-added spaces: {e}")
+        json_stdout =  ''.join(line.strip() for line in stream.splitlines())
+        json_stdout = json.loads(json_stdout)
+    return json_stdout

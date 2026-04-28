@@ -24,6 +24,7 @@ from cep.datamodels import (
 from cep.utils import (
         get_executable_path,
         get_template_path,
+        parse_stdout,
         )
 from cep.cli.utils import (
         CLI_DATA_DIR,
@@ -103,6 +104,8 @@ class CepBundle(BaseModel):
                     arcname = path.relative_to(tmpdir)
                     zf.write(path, arcname)
 
+        print("saved cep bundle at: {0}".format(output_path))
+ 
         return output_path
 
 
@@ -121,7 +124,7 @@ def create(network_name: str,
            am_lighthouse: bool = False,
            public_ip: str = None,
            output_dir: Path = CLI_DATA_DIR,
-           bundle: bool = False,
+           bundle: bool = True,
            ) -> list[Path]:
 
     if am_lighthouse and not public_ip:
@@ -315,8 +318,16 @@ def connect(network_name: str,
         'print',
         '-path', cert_path,
         ], capture_output=True, text=True)
-    tld = json.loads(result.stdout)['details']['name'].split('.')[-1]
-    ip = json.loads(result.stdout)['details']['networks'][0].split('/')[0]
+
+    json_stdout = parse_stdout(result.stdout) 
+    
+    if not isinstance(json_stdout, dict):
+        print(f"JSON invalid despite stripping os-added spaces")
+        return None 
+    
+    #TODO: getters instead of indexing, tbd during archive fixes
+    tld = json_stdout['details']['name'].split('.')[-1]
+    ip = json_stdout['details']['networks'][0].split('/')[0]
 
     command = [
             nebula_executable_path,
