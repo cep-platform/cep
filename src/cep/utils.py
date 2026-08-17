@@ -15,7 +15,6 @@ from typing import List
 
 from platformdirs import user_data_dir
 
-import yaml
 
 APP_NAME = "cep"
 DATA_DIR = Path(user_data_dir(APP_NAME))
@@ -137,13 +136,6 @@ def get_available_path_templates(app_name: str) -> Result[List[str], str]:
 
     return Err("Pointing to inexistent directory")
 
-def change_path_to_relative(path: Path):
-    """ small helper to write back a relative path to bundle"""
-    data = yaml.safe_load(path.read_text()) or {}
-    print("PATH:///", data)
-    if not data:
-        raise IOError
-    
 
 #TODO: test_this (DONE!!)
 def get_template_path(name):

@@ -25,7 +25,6 @@ from cep.utils import (
         get_executable_path,
         get_template_path,
         parse_stdout,
-        change_path_to_relative
         )
 from cep.cli.utils import (
         CLI_DATA_DIR,
@@ -96,8 +95,6 @@ class CepBundle(BaseModel):
                 json.dumps(metadata, indent=2),
                 encoding="utf-8",
             )
-            
-            change_path_to_relative(self.config_out_path)
 
             # -----------------
             # Create zip artifact
@@ -129,6 +126,8 @@ def create(network_name: str,
            public_ip: str = None,
            output_dir: Path = CLI_DATA_DIR,
            bundle: bool = False,
+           add_dns_record: bool = False,  #TODO: see why the cli does not pass the arg correctly
+           client_bundle: bool = True, #TODO: idem here
            ) -> list[Path]:
 
     if am_lighthouse and not public_ip:
@@ -175,7 +174,9 @@ def create(network_name: str,
             network_name=network_name,
             is_lighthouse=am_lighthouse,
             public_ip=public_ip,
+            add_dns_record=add_dns_record,
             )
+
     host_response = client.post(
             "/create",
             json=host_request.model_dump(mode="json")
