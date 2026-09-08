@@ -1,0 +1,16 @@
+services:
+  ray-head:
+    image: cep-ray-head:latest
+    network_mode: host
+    container_name: ray-head
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    environment:
+      - RAY_PORT=6379
+      - DASHBOARD_PORT=8265
+    volumes:
+      - /tmp/ray:/tmp/ray
+      - ${NEBULA_CERTS_PATH:-~/.cache/cep/cli}/${NEBULA_NETWORK:-default}/${NEBULA_HOST:-server}:/etc/nebula/:ro
+    restart: unless-stopped

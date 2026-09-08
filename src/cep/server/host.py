@@ -143,6 +143,21 @@ def _sign(request: CertificateRequest) -> SignedCertificate:
 
 @host_router.post("/sign")
 def sign(request: CertificateRequest):
+    network_store = load_db()
+    if request.network_name not in network_store.networks:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Network '{request.network_name}' not found",
+                )
+
+    ca_cert_path = SERVER_DATA_DIR / request.network_name / 'ca.crt'
+    ca_key_path = SERVER_DATA_DIR / request.network_name / 'ca.key'
+    if not ca_cert_path.exists() or not ca_key_path.exists():
+        raise HTTPException(
+                status_code=409,
+                detail=f"CA for network '{request.network_name}' not found. Run 'cep network sign {request.network_name}' before signing host certificates.",
+                )
+
     signed_certificate = _sign(request)
     cert_path = signed_certificate.cert_path
     ca_cert_path = signed_certificate.ca_cert_path

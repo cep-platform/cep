@@ -59,6 +59,9 @@ uv run cep apps run
 # Create network
 uv run cep network create mynetwork --no-dns
 
+# Create the network CA (required before signing host certificates)
+uv run cep network sign mynetwork
+
 # Create lighthouse (first host must be lighthouse)
 uv run cep host create mynetwork server --am-lighthouse --public-ip 203.0.113.1
 
@@ -80,10 +83,13 @@ Before you start, make sure `CEP_SERVER_URL` is pointing to your server in .env 
 
 ```bash
 uv run cep network create <name>        # Create a network
+uv run cep network sign <name>          # Create the network CA (required before signing host certificates)
 uv run cep network list                 # List networks
-uv run cep network show <name>       # Show network details
-uv run cep network delete <name>       # Delete a network
+uv run cep network show <name>          # Show network details
+uv run cep network delete <name>        # Delete a network
 ```
+
+> **Order matters:** run `network create` before `network sign`, and `network sign` before any `host create` (which signs host certificates against the network CA).
 
 ### Host
 ```bash

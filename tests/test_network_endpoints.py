@@ -1,10 +1,19 @@
 """
-Tests for the /network/delete, /network/show, and /network/lighthouses router endpoints.
+Tests for the /network/create, /network/sign, /network/delete, /network/show, and /network/lighthouses router endpoints.
 
 TODO references:
   server/network.py:73  – "make sure network_record deletion is tested"
   server/network.py:100 – "create dummy database and check if the contents match the spec"
   server/network.py:117 – "test lighthouses implicitly in an integration test"
+
+create:
+- Persists the network record in the DB
+- Does NOT create a CA (CA creation moved to /network/sign)
+
+sign:
+- Creates ca.crt/ca.key in the network directory
+- Returns 404 when the network does not exist (ordering: create before sign)
+- Returns 409 when a CA already exists for the network
 
 delete:
 - Removes the network directory from SERVER_DATA_DIR
@@ -129,6 +138,64 @@ class TestNetworkShow:
     def test_returns_404_for_unknown_network(self, api, server_dir):
         resp = api.get("/network/show", params={"name": "doesnotexist"})
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# /network/create
+# ---------------------------------------------------------------------------
+
+class TestNetworkCreate:
+    def test_persists_network_record(self, api, server_dir):
+        resp = api.get("/network/create", params={"name": "freshnet", "dns": False})
+
+        assert resp.status_code == 200
+        store = load_db()
+        assert "freshnet" in store.networks
+        assert resp.json()["name"] == "freshnet"
+
+    def test_does_not_create_ca(self, api, server_dir):
+        """CA creation is a separate step (network sign) and must not happen here."""
+        api.get("/network/create", params={"name": "freshnet", "dns": False})
+
+        assert not (server_dir / "freshnet" / "ca.crt").exists()
+        assert not (server_dir / "freshnet" / "ca.key").exists()
+
+
+# ---------------------------------------------------------------------------
+# /network/sign
+# ---------------------------------------------------------------------------
+
+class TestNetworkSign:
+    def test_creates_ca_files_in_network_dir(self, api, server_dir):
+        seed_network(server_dir, name="mynet")
+
+        resp = api.get("/network/sign", params={"name": "mynet"})
+
+        assert resp.status_code == 200
+        assert (server_dir / "mynet" / "ca.crt").exists()
+        assert (server_dir / "mynet" / "ca.key").exists()
+
+    def test_returns_404_for_unknown_network(self, api, server_dir):
+        resp = api.get("/network/sign", params={"name": "ghost"})
+
+        assert resp.status_code == 404
+        assert "not found" in resp.json()["detail"]
+
+    def test_returns_409_when_ca_already_exists(self, api, server_dir):
+        seed_network(server_dir, name="mynet")
+        (server_dir / "mynet" / "ca.crt").write_text("existing")
+
+        resp = api.get("/network/sign", params={"name": "mynet"})
+
+        assert resp.status_code == 409
+
+    def test_returns_409_when_only_key_exists(self, api, server_dir):
+        seed_network(server_dir, name="mynet")
+        (server_dir / "mynet" / "ca.key").write_text("existing")
+
+        resp = api.get("/network/sign", params={"name": "mynet"})
+
+        assert resp.status_code == 409
 
 
 # ---------------------------------------------------------------------------

@@ -31,6 +31,10 @@ _sign:
 - Calls nebula-cert sign with the correct arguments
 - Writes the public key to a temp file before calling nebula-cert
 - Returns a SignedCertificate whose cert_path and ca_cert_path exist
+
+/host/sign (ordering):
+- Returns 404 for an unknown network
+- Returns 409 when the network CA has not been created yet (network sign first)
 """
 from __future__ import annotations
 
@@ -247,6 +251,34 @@ class TestHostShow:
         seed_network(server_dir, name="testnet")
         resp = api.get("/host/show", params={"network_name": "testnet", "host_name": "ghost"})
         assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# /host/sign (ordering enforcement)
+# ---------------------------------------------------------------------------
+
+class TestSignEndpoint:
+    def _request(self, network_name: str = "testnet", host_name: str = "node1") -> CertificateRequest:
+        return CertificateRequest(
+            network_name=network_name,
+            host_name=host_name,
+            pub_key="-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----",
+        )
+
+    def test_returns_404_for_unknown_network(self, api, server_dir):
+        resp = api.post("/host/sign", json=self._request(network_name="ghost").model_dump(mode="json"))
+
+        assert resp.status_code == 404
+
+    def test_returns_409_when_ca_not_created_yet(self, api, server_dir):
+        """Host signing requires the network CA – 'network sign' must run first."""
+        seed_network(server_dir, name="testnet")
+        _seed_host(server_dir, host_name="node1")
+
+        resp = api.post("/host/sign", json=self._request().model_dump(mode="json"))
+
+        assert resp.status_code == 409
+        assert "network sign" in resp.json()["detail"]
 
 
 # ---------------------------------------------------------------------------

@@ -81,6 +81,7 @@ class CepBundle(BaseModel):
             # -----------------
             # Copy Nebula files
             # -----------------
+
             shutil.copy2(self.config_out_path, nebula_dir / self.config_out_path.name)
             shutil.copy2(self.ca_crt_path, nebula_dir / self.ca_crt_path.name)
             shutil.copy2(self.crt_path, nebula_dir / self.crt_path.name)
@@ -125,6 +126,8 @@ def create(network_name: str,
            public_ip: str = None,
            output_dir: Path = CLI_DATA_DIR,
            bundle: bool = False,
+           add_dns_record: bool = False,  #TODO: see why the cli does not pass the arg correctly
+           client_bundle: bool = True, #TODO: idem here
            ) -> list[Path]:
 
     if am_lighthouse and not public_ip:
@@ -171,7 +174,9 @@ def create(network_name: str,
             network_name=network_name,
             is_lighthouse=am_lighthouse,
             public_ip=public_ip,
+            add_dns_record=add_dns_record,
             )
+
     host_response = client.post(
             "/create",
             json=host_request.model_dump(mode="json")
