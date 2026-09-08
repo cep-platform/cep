@@ -59,8 +59,6 @@ def create(name: str, dns: bool) -> NetworkRecord:
     network_data_dir = SERVER_DATA_DIR / network_record.name
     network_data_dir.mkdir(exist_ok=True)
 
-    create_ca(name=name, ca_dir=network_data_dir)
-
     network_store = load_db()
     network_store.networks[network_record.name] = network_record
     save_db(network_store)
@@ -69,6 +67,29 @@ def create(name: str, dns: bool) -> NetworkRecord:
         start_dns(subnet=str(subnet))
 
     return network_record
+
+
+@network_router.get("/sign")
+def sign(name: str) -> Path:
+    network_store = load_db()
+    if name not in network_store.networks:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Network '{name}' not found. Create it first with 'network create'.",
+                )
+
+    network_data_dir = SERVER_DATA_DIR / name
+    ca_cert_path = network_data_dir / 'ca.crt'
+    ca_key_path = network_data_dir / 'ca.key'
+    if ca_cert_path.exists() or ca_key_path.exists():
+        raise HTTPException(
+                status_code=409,
+                detail=f"CA already exists for network '{name}'",
+                )
+
+    create_ca(name=name, ca_dir=network_data_dir)
+
+    return network_data_dir
 
 #TODO: test_this (DONE!!): make sure network_record deletion is tested
 @network_router.delete("/delete")

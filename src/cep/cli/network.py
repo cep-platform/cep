@@ -26,6 +26,12 @@ def create(name: str, dns: bool = True):
 
 
 @network_app.command()
+def sign(name: str):
+    resp = client.get("/sign", params={'name': name})
+    resp.raise_for_status()
+
+
+@network_app.command()
 def show(name: str):
     resp = client.get("/show", params={'name': name})
     resp.raise_for_status()
