@@ -9,9 +9,6 @@ from importlib import resources
 from pathlib import Path
 
 import json
-import os
-from result import Result, Ok, Err
-from typing import List
 
 from platformdirs import user_data_dir
 
@@ -21,8 +18,6 @@ DATA_DIR = Path(user_data_dir(APP_NAME))
 DATA_DIR.mkdir(exist_ok=True, parents=True)
 CACHE_DIR = Path.home() / ".cache" / "nebula"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
-APP_TEMPLATE_PATH = os.getcwd() + "/src/cep/app_templates/"
-
 CEP_SERVER_CFG_PATH = Path('.cepservercfg')
 
 NEBULA_VERSION = "1.10.0"
@@ -121,20 +116,6 @@ def get_executable_path(name):
     if not path.exists():
         download_nebula()
     return path
-
-#TODO:replace with db in later iter
-def get_available_path_templates(app_name: str) -> Result[List[str], str]:
-    files = [f for f in os.listdir(APP_TEMPLATE_PATH)] 
-    if len(files) > 0:
-        # I assume template naming cannot fail
-        config_match = any([app.split(".yml")[0] == app_name  for app in files])
-        if config_match:
-            return Ok(
-                APP_TEMPLATE_PATH + app_name + ".yml"
-            )
-        return Err("App not found in template directory")
-
-    return Err("Pointing to inexistent directory")
 
 #TODO: test_this (DONE!!)
 def get_template_path(name):

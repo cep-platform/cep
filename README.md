@@ -155,28 +155,21 @@ uv run pytest
 uv run pytest --cov=cep --cov-report=term-missing
 
 # Run a specific file or test
-uv run pytest tests/test_server_network.py
-uv run pytest tests/test_cli_host.py::TestHostCreate
+uv run pytest tests/test_network_endpoints.py
+uv run pytest tests/test_host_endpoints.py::TestHostCreate
 ```
 
 ### Test structure
 
 | File | What is tested |
 |------|----------------|
-| `tests/conftest.py` | Shared fixtures (isolated DB, mocked DNS, TestClient, CliRunner) |
-| `tests/test_datamodels.py` | Pydantic model validation and serialization roundtrips |
-| `tests/test_utils.py` | `parse_stdout`, `get_platform`, `extract_archive`, `get_template_path` |
-| `tests/test_storage_docker.py` | `Pool` / `Volume` filesystem operations and error handling |
-| `tests/test_server_utils.py` | Network and storage DB load/save roundtrips |
-| `tests/test_server_network.py` | `/network` router via FastAPI `TestClient` |
-| `tests/test_server_host.py` | `/host` router via FastAPI `TestClient` |
-| `tests/test_apps_docker.py` | `ComposeConfig` and `Docker` class methods (templates, deployment file management) |
-| `tests/test_appstore_server.py` | Appstore FastAPI routes (`/health`, `/list`, `/deploy`, `/clear`, etc.) |
-| `tests/test_cli_bundle.py` | `CepBundle` metadata generation and `.cepbundle` zip artifact structure |
-| `tests/test_cli_dns.py` | `NebulaDNS` helpers and `dns` CLI commands |
-| `tests/test_cli_network.py` | `network` CLI commands via Typer `CliRunner` |
-| `tests/test_cli_host.py` | `host` CLI commands via Typer `CliRunner` |
-| `tests/test_cli_apps.py` | `apps deploy/list/store/targeted-destroy/clear` CLI commands |
-| `tests/test_cli_storage.py` | `storage pool` and `storage volume` CLI commands |
+| `tests/conftest.py` | Shared fixtures (isolated DB, mocked DNS/CA, TestClient, CliRunner) |
+| `tests/test_docker.py` | `ComposeConfig` load/save + `Docker` deployment-file management |
+| `tests/test_host_endpoints.py` | `/host` endpoints (create, delete, show, sign) |
+| `tests/test_network_endpoints.py` | `/network` endpoints (delete, show, lighthouses) |
+| `tests/test_network_helpers.py` | `generate_ula_prefix`, `create_ca` |
+| `tests/test_network_record_serializers.py` | `NetworkRecord` subnet serializer/deserializer roundtrips |
+| `tests/test_server_db.py` | Server DB load/save roundtrips |
+| `tests/test_utils.py` | `get_platform`, `extract_archive`, `download_nebula`, `get_executable_path`, `get_template_path`, `parse_stdout` |
 
 > **Note:** `CEP_SERVER_TOKEN` is automatically cleared during server tests so the test client does not need auth credentials.
