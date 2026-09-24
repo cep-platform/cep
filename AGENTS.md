@@ -104,12 +104,12 @@ startupscripts/  Client container entrypoints.
 - `src/cep/utils.py` creates DATA_DIR/CACHE_DIR at import time — never
   patch those globals in tests; monkeypatch module-level paths like
   conftest.py does.
-- `APP_TEMPLATE_PATH` (utils.py) points to `src/cep/app_templates/`,
-  which does not exist in the repo; prefer `get_template_path()`
-  (importlib.resources on `cep.templates`) and `cep.apps.app_templates`.
+- App templates live in `src/cep/apps/app_templates/` and are looked up
+  via importlib.resources as `cep.apps.app_templates` (see
+  `cep.apps.docker`); nebula/bundle templates live in `src/cep/templates/`
+  (`get_template_path()`).
 - The appstore mounts `/var/run/docker.sock` — a known privilege
   escalation vector; never expose it beyond the compose file.
-- The README's "Test structure" table is stale; trust `tests/` files.
 - Nebula binaries are pre-downloaded at Docker build time; don't add
   runtime downloads outside `download_nebula()`.
 
