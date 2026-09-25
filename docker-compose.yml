@@ -1,5 +1,18 @@
 services:
 
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./conf:/etc/caddy
+      - ./site:/srv
+      - caddy_data:/data
+      - caddy_config:/config
+
   cep-dns:
     build:
       context: ./unbound
@@ -78,4 +91,5 @@ networks:
 
 volumes:
   unbound-state:
-
+  caddy_data:
+  caddy_config:

@@ -1,6 +1,7 @@
 from typing import Optional
 from fastapi import FastAPI, HTTPException
 from cep.apps.docker import Docker
+from cep.apps.caddy import CaddyReverseProxy
 from cep.apps.store import store_router
 from cep.storage.docker import Pool, Volume, list_pools, list_all_volumes
 
@@ -70,6 +71,10 @@ def _deploy(name: str):
     """
     app_template = Docker.get_app_template(name)
     Docker.add_to_deployment_file(app_template)
+    CaddyReverseProxy.add_rproxy(
+            hostname=f"{name}.reverseproxy.cep",
+            destination=name
+            )
     Docker.compose_up()
 
 
@@ -91,6 +96,10 @@ async def _destroy(name: str):
     return_code = await Docker.targeted_destroy(name)
     if return_code == 0:
         Docker.update_deployment_file(name)
+    Docker.compose_up()
+    CaddyReverseProxy.remove_rproxy(
+            hostname=f"{name}.reverseproxy.cep",
+            )
 
 
 @app.delete("/clear")
