@@ -1,3 +1,7 @@
+x-cep:
+  proxy:
+    port: 27017
+
 services:
   mongodb:
     image: mongo:7

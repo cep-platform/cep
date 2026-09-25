@@ -1,3 +1,7 @@
+x-cep:
+  proxy:
+    port: 5432
+
 services:
   postgres:
     image: postgres:15-alpine

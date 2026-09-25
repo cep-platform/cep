@@ -70,6 +70,7 @@ def _deploy(name: str):
         - Runs `docker compose up` (or equivalent).
     """
     app_template = Docker.get_app_template(name)
+    print(app_template)
     Docker.add_to_deployment_file(app_template)
     CaddyReverseProxy.add_rproxy(
             hostname=f"{name}.reverseproxy.cep",

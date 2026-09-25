@@ -1,3 +1,7 @@
+x-cep:
+  proxy:
+    port: 6969
+
 services:
   nginx:
     image: nginx:alpine

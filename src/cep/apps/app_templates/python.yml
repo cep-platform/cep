@@ -1,3 +1,7 @@
+x-cep:
+  proxy:
+    port: 8069
+
 services:
   python-app:
     image: python:3.11-slim

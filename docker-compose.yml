@@ -4,12 +4,12 @@ services:
     image: caddy:2
     restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
+      - "8080:80"
+      - "8443:443"
+      - "8443:443/udp"
     volumes:
-      - ./conf:/etc/caddy
-      - ./site:/srv
+      # - ./conf:/etc/caddy
+      # - ./site:/srv
       - caddy_data:/data
       - caddy_config:/config
 

@@ -1,3 +1,7 @@
+x-cep:
+  proxy:
+    port: 4533
+
 services:
   navidrome:
     image: deluan/navidrome:latest
