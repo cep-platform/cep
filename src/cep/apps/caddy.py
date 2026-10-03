@@ -40,7 +40,7 @@ class CaddyReverseProxy(ReverseProxy):
 
     @property
     def config() -> dict:
-        response = requests.get("http://caddy:2019/config")
+        response = requests.get("http://cep-caddy:2019/config")
 
         response.raise_for_status()
         return response.json()
@@ -62,7 +62,7 @@ class CaddyReverseProxy(ReverseProxy):
 
     def _update_config(config: dict):
         response = requests.post(
-                "http://caddy:2019/load",
+                "http://cep-caddy:2019/load",
                 headers={"Content-Type": "application/json"},
                 json=config,
                 )
