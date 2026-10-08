@@ -151,6 +151,17 @@ class TestAppTemplateLabels:
                 assert port is not None, f"{name}/{service} missing {PROXY_PORT_LABEL}"
                 assert str(port).isdigit()
 
+    def test_container_name_on_every_service(self):
+        for name in Docker.list_available_apps():
+            config = Docker.get_app_template(name)
+            for service, service_config in config.services.items():
+                container_name = service_config.get("container_name")
+                assert container_name, f"{name}/{service} has no container_name"
+                assert container_name.startswith("cep-app-"), (
+                    f"{name}/{service} container_name must follow the "
+                    f"cep-app-<name> convention, got '{container_name}'"
+                )
+
     def test_proxy_port_label_survives_deployment_merge(self, deployment_path: Path):
         app_config = Docker.get_app_template("redis")
 
