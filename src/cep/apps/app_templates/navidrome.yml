@@ -1,13 +1,11 @@
-x-cep:
-  proxy:
-    port: 4533
-
 services:
   navidrome:
     networks: 
       - cep
     image: deluan/navidrome:latest
     container_name: cep-app-navidrome
+    labels:
+      cep.proxy.port: "4533"
     # user: 1000:1000 # should be owner of volumes
     ports:
       - "4533:4533"
