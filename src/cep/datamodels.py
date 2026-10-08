@@ -31,6 +31,7 @@ class NetworkRecord(BaseModel):
     name: str
     subnet: ipaddress.IPv6Network
     hosts: dict[str, HostRecord]
+    apps: dict[str, AppRecord]
     dns: bool
 
     @field_serializer("subnet")
@@ -44,12 +45,17 @@ class NetworkRecord(BaseModel):
             return ipaddress.IPv6Network(value)
         return value
 
-    def get_ip_address(self):
+    def get_ip_address(self) -> IPv6Address:
         if len(self.hosts) == 0:
             # First host gets [subnet]::1, the rest gets random ips
             return next(self.subnet.hosts())
         else:
             return _random_host_ip(self.subnet)
+
+    def get_cep(self) -> HostRecord:
+        for host_record in self.hosts.values():
+            if int(host_record.ip) - int(self.subnet.network_address) == 1:
+                return host_record
 
 class NetworkStore(BaseModel):
     networks: dict[str, NetworkRecord]
@@ -93,6 +99,20 @@ class HostRecord(BaseModel):
             return ipaddress.ip_address(value)
         return value
 
+class AppRecord(BaseModel):
+    name: str
+    ip: ipaddress.IPv6Address
+
+    @field_serializer("ip")
+    def serialize_ip(self, ip: ipaddress.IPv6Address) -> str:
+        return str(ip) if ip else ip
+
+    @field_validator("ip", mode="before")
+    @classmethod
+    def deserialize_ip(cls, value):
+        if isinstance(value, str):
+            return ipaddress.ip_address(value)
+        return value
 
 class CertificateRequest(BaseModel):
     network_name: str

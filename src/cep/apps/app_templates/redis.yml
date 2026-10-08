@@ -4,8 +4,10 @@ x-cep:
 
 services:
   redis:
+    networks: 
+      - cep
     image: redis:7-alpine
-    container_name: my-redis
+    container_name: cep-app-redis
     ports:
       - "6379:6379"
     volumes:

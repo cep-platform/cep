@@ -4,8 +4,10 @@ x-cep:
 
 services:
   python-app:
+    networks: 
+      - cep
     image: python:3.11-slim
-    container_name: my-python-app
+    container_name: cep-app-python
     volumes:
       - ./app:/app
     working_dir: /app

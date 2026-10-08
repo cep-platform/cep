@@ -3,9 +3,11 @@ x-cep:
     port: 27017
 
 services:
-  mongodb:
+  mongo:
+    networks: 
+      - cep
     image: mongo:7
-    container_name: my-mongodb
+    container_name: cep-app-mongo
     environment:
       MONGO_INITDB_ROOT_USERNAME: admin
       MONGO_INITDB_ROOT_PASSWORD: password123

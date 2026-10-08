@@ -4,8 +4,10 @@ x-cep:
 
 services:
   nginx:
+    networks: 
+      - cep
     image: nginx:alpine
-    container_name: my-nginx
+    container_name: cep-app-nginx
     ports:
       - "6969:6969"
       - "8443:8443"

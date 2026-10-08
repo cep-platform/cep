@@ -3,6 +3,8 @@ from __future__ import annotations
 import requests
 from abc import ABC, abstractmethod
 
+from rich import print
+
 
 class ReverseProxy(ABC):
     def __init__(self):
@@ -23,22 +25,21 @@ class CaddyReverseProxy(ReverseProxy):
     def add_rproxy(hostname: str, destination: str):
         rproxy_entry = CaddyReverseProxy._get_rproxy_config_entry(
                 hostname=hostname,
-                destination=destination,
+                destination=f"cep-app-{destination}",
                 )
         config = CaddyReverseProxy._add_to_config(
                 rproxy_entry=rproxy_entry,
-                config= CaddyReverseProxy.config,
+                config= CaddyReverseProxy.config(),
                 )
         CaddyReverseProxy._update_config(config=config)
 
     def remove_rproxy(hostname: str):
         config = CaddyReverseProxy._remove_from_config(
                 hostname=hostname,
-                config=CaddyReverseProxy.config,
+                config=CaddyReverseProxy.config(),
                 )
         CaddyReverseProxy._update_config(config=config)
 
-    @property
     def config() -> dict:
         response = requests.get("http://cep-caddy:2019/config")
 

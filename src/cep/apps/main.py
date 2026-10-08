@@ -1,12 +1,17 @@
+from time import sleep
 from typing import Optional
 from fastapi import FastAPI, HTTPException
-from cep.apps.docker import Docker
+from cep.apps.docker import Docker, ComposeConfig
 from cep.apps.caddy import CaddyReverseProxy
 from cep.apps.store import store_router
+from cep.server.dns import add_host_to_dns, AddAAAARequest
 from cep.storage.docker import Pool, Volume, list_pools, list_all_volumes
 
 app = FastAPI()
 app.include_router(store_router)
+sleep(10)
+CaddyReverseProxy.initialize_caddy_config()
+
 
 
 @app.get("/health")
@@ -55,7 +60,7 @@ def _list() -> list[str]:
 
 
 @app.post("/deploy")
-def _deploy(name: str):
+def _deploy(name: str) -> ComposeConfig:
     """
     Deploy an application using its Docker template.
 
@@ -70,13 +75,10 @@ def _deploy(name: str):
         - Runs `docker compose up` (or equivalent).
     """
     app_template = Docker.get_app_template(name)
-    print(app_template)
     Docker.add_to_deployment_file(app_template)
-    CaddyReverseProxy.add_rproxy(
-            hostname=f"{name}.reverseproxy.cep",
-            destination=name
-            )
     Docker.compose_up()
+
+    return app_template
 
 
 @app.delete("/targetedDestroy")
@@ -98,9 +100,6 @@ async def _destroy(name: str):
     if return_code == 0:
         Docker.update_deployment_file(name)
     Docker.compose_up()
-    CaddyReverseProxy.remove_rproxy(
-            hostname=f"{name}.reverseproxy.cep",
-            )
 
 
 @app.delete("/clear")

@@ -4,7 +4,10 @@ x-cep:
 
 services:
   navidrome:
+    networks: 
+      - cep
     image: deluan/navidrome:latest
+    container_name: cep-app-navidrome
     # user: 1000:1000 # should be owner of volumes
     ports:
       - "4533:4533"
@@ -17,3 +20,8 @@ volumes:
   data:
   music:
 
+    
+networks:
+  cep:
+    external: true
+    name: cep_cep

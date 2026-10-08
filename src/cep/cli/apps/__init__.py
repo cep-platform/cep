@@ -33,10 +33,14 @@ _________  _____________________        _____
 
 #TODO: async loop
 @apps_app.command("deploy")
-def _deploy(name_arr: list[str]) -> str | None:
-    for name in name_arr:
-        resp = client_proxy.post("/deployProxy", params={'name': name})
-        resp.raise_for_status()
+def _deploy(app_name, network_name) -> str | None:
+    resp = client_proxy.post(
+            "/deployProxy",
+            params={
+                'name': app_name,
+                'network_name': network_name
+                })
+    resp.raise_for_status()
 
 
 #TODO:

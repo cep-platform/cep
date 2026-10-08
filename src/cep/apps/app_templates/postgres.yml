@@ -4,8 +4,10 @@ x-cep:
 
 services:
   postgres:
+    networks: 
+      - cep
     image: postgres:15-alpine
-    container_name: my-postgres
+    container_name: cep-app-postgres
     environment:
       POSTGRES_USER: myuser
       POSTGRES_PASSWORD: mypassword
