@@ -1,11 +1,39 @@
+from contextlib import asynccontextmanager
+from time import sleep
 from typing import Optional
 from fastapi import FastAPI, HTTPException
-from cep.apps.docker import Docker
+
+import requests
+
+from cep.apps.docker import Docker, ComposeConfig
+from cep.apps.caddy import CaddyReverseProxy
 from cep.apps.store import store_router
 from cep.storage.docker import Pool, Volume, list_pools, list_all_volumes
 
-app = FastAPI()
+CADDY_INIT_ATTEMPTS = 3
+CADDY_INIT_RETRY_DELAY = 5.0
+
+
+def _init_caddy_with_retry() -> None:
+    for attempt in range(1, CADDY_INIT_ATTEMPTS + 1):
+        try:
+            CaddyReverseProxy.ensure_initialized()
+            return
+        except requests.exceptions.RequestException:
+            if attempt == CADDY_INIT_ATTEMPTS:
+                raise
+            sleep(CADDY_INIT_RETRY_DELAY)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _init_caddy_with_retry()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 app.include_router(store_router)
+
 
 
 @app.get("/health")
@@ -54,7 +82,7 @@ def _list() -> list[str]:
 
 
 @app.post("/deploy")
-def _deploy(name: str):
+def _deploy(name: str) -> ComposeConfig:
     """
     Deploy an application using its Docker template.
 
@@ -71,6 +99,8 @@ def _deploy(name: str):
     app_template = Docker.get_app_template(name)
     Docker.add_to_deployment_file(app_template)
     Docker.compose_up()
+
+    return app_template
 
 
 @app.delete("/targetedDestroy")
@@ -91,6 +121,7 @@ async def _destroy(name: str):
     return_code = await Docker.targeted_destroy(name)
     if return_code == 0:
         Docker.update_deployment_file(name)
+    Docker.compose_up()
 
 
 @app.delete("/clear")

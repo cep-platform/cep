@@ -13,3 +13,6 @@ wheels/
 .cloudboxservercfg
 .env
 *.cepbundle
+
+# Coverage artifacts
+.coverage
