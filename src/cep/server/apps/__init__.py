@@ -43,9 +43,12 @@ def deploy(name: str, network_name: str):
     network_record.apps[name] = app_record
 
     resp = client.post("/deploy", params={"name": name})
+    rproxy_port = resp.json()['services'][name]['labels']['cep.proxy.port']
+
+    destination = f"{name}:{rproxy_port}"
     CaddyReverseProxy.add_rproxy(
             hostname=host_name,
-            destination=name
+            destination=destination
             )
     req = AddAAAARequest(name=host_name, ip=str(cep.ip))
     add_host_to_dns(req)
