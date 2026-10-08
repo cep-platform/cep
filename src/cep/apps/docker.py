@@ -47,10 +47,7 @@ class ComposeConfig(BaseModel):
     def load(cls, path: Path) -> "ComposeConfig":
         try:
             data = yaml.safe_load(path.read_text())
-            print(f"AAAAAAAAAAAAAAAA = {data}")
-            a = cls(**data)
-            print(a)
-            return a
+            return cls(**data)
         except FileNotFoundError:
             return cls(**{})
 

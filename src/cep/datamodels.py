@@ -31,7 +31,7 @@ class NetworkRecord(BaseModel):
     name: str
     subnet: ipaddress.IPv6Network
     hosts: dict[str, HostRecord]
-    apps: dict[str, AppRecord]
+    apps: dict[str, AppRecord] = {}
     dns: bool
 
     @field_serializer("subnet")
@@ -52,10 +52,11 @@ class NetworkRecord(BaseModel):
         else:
             return _random_host_ip(self.subnet)
 
-    def get_cep(self) -> HostRecord:
+    def get_cep(self) -> HostRecord | None:
         for host_record in self.hosts.values():
             if int(host_record.ip) - int(self.subnet.network_address) == 1:
                 return host_record
+        return None
 
 class NetworkStore(BaseModel):
     networks: dict[str, NetworkRecord]

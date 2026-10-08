@@ -163,13 +163,16 @@ uv run pytest tests/test_host_endpoints.py::TestHostCreate
 
 | File | What is tested |
 |------|----------------|
-| `tests/conftest.py` | Shared fixtures (isolated DB, mocked DNS/CA, TestClient, CliRunner) |
+| `tests/conftest.py` | Shared fixtures (isolated DB, mocked DNS/CA, TestClient, CliRunner, appstore/reverse-proxy stubs) |
+| `tests/test_apps_endpoints.py` | `/apps` deploy/destroy proxy endpoints (mocked appstore, reverse proxy and DNS) |
+| `tests/test_caddy.py` | Caddy wrapper config helpers + idempotent startup init (mocked HTTP) |
+| `tests/test_cli_apps.py` | `apps deploy` / `apps targeted-destroy` parameter forwarding |
 | `tests/test_docker.py` | `ComposeConfig` load/save + `Docker` deployment-file management |
 | `tests/test_host_endpoints.py` | `/host` endpoints (create, delete, show, sign) |
 | `tests/test_network_endpoints.py` | `/network` endpoints (delete, show, lighthouses) |
 | `tests/test_network_helpers.py` | `generate_ula_prefix`, `create_ca` |
-| `tests/test_network_record_serializers.py` | `NetworkRecord` subnet serializer/deserializer roundtrips |
-| `tests/test_server_db.py` | Server DB load/save roundtrips |
+| `tests/test_network_record_serializers.py` | `NetworkRecord` subnet serializer/deserializer roundtrips, `get_cep` |
+| `tests/test_server_db.py` | Server DB load/save roundtrips, `AppRecord` persistence |
 | `tests/test_utils.py` | `get_platform`, `extract_archive`, `download_nebula`, `get_executable_path`, `get_template_path`, `parse_stdout` |
 
 > **Note:** `CEP_SERVER_TOKEN` is automatically cleared during server tests so the test client does not need auth credentials.

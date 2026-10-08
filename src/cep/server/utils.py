@@ -14,7 +14,7 @@ CEP_SERVER_CFG_PATH = Path.home() / '.cepservercfg'
 #TODO: test_this (DONE!!): existing and non existing dbs need to be identified
 def load_db() -> NetworkStore:
     if not DB_PATH.exists():
-        return NetworkStore(networks={}, apps={})
+        return NetworkStore(networks={})
 
     with DB_PATH.open("r", encoding="utf-8") as f:
         raw = json.load(f)
