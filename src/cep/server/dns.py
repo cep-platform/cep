@@ -2,10 +2,10 @@ import os
 from ipaddress import IPv6Address
 
 import httpx
-from fastapi import APIRouter, Response, HTTPException, Body
+from fastapi import APIRouter, Response, HTTPException, Body, Depends
 
-from cep.datamodels import AddAAAARequest
-from cep.server.utils import load_db
+from cep.datamodels import AddAAAARequest, NetworkStore
+from cep.server.utils import get_network_store
 
 dns_router = APIRouter(prefix="/dns")
 
@@ -54,9 +54,7 @@ def is_valid_ipv6(address: str) -> bool:
 
 
 @dns_router.post("/start")
-def start(network_name: str = Body(..., embed=True)):
-    network_store = load_db()
-
+def start(network_name: str = Body(..., embed=True), network_store: NetworkStore = Depends(get_network_store)):
     network_record = network_store.networks.get(network_name, None)
     if not network_record:
         raise HTTPException(

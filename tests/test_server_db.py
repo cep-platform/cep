@@ -8,6 +8,7 @@ Covers:
 - load_db when DB file exists → correct NetworkStore reconstructed
 - save_db writes JSON that load_db can re-read exactly
 - save_db overwrites; subsequent load_db sees the new state
+- get_network_store returns the same state as load_db (FastAPI dependency)
 - AppRecord roundtrips (ip serializer/deserializer) through the DB
 - Pre-feature db.json files without an "apps" key still load
 """
@@ -20,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from cep.datamodels import AppRecord, HostRecord, NetworkRecord, NetworkStore
-from cep.server.utils import load_db, save_db
+from cep.server.utils import get_network_store, load_db, save_db
 
 
 class TestLoadDb:
@@ -108,6 +109,28 @@ class TestSaveDb:
         final = load_db()
         assert "a" not in final.networks
         assert "b" in final.networks
+
+
+class TestGetNetworkStore:
+    """get_network_store is the shared FastAPI dependency wrapping load_db."""
+
+    def test_returns_empty_store_when_file_missing(self, server_dir):
+        store = get_network_store()
+        assert store.networks == {}
+
+    def test_returns_current_store_contents(self, server_dir):
+        net = NetworkRecord(
+            name="mynet",
+            subnet=ipaddress.IPv6Network("fd00::/64"),
+            hosts={},
+            dns=True,
+        )
+        save_db(NetworkStore(networks={"mynet": net}))
+
+        store = get_network_store()
+
+        assert "mynet" in store.networks
+        assert store.networks["mynet"].dns is True
 
 
 class TestAppRecordPersistence:
