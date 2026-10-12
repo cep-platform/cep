@@ -3,7 +3,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from fastapi.exceptions import HTTPException
 
@@ -14,11 +14,12 @@ from cep.datamodels import (
         HostRequest,
         AddAAAARequest,
         SignedCertificate,
+        NetworkStore,
         )
 from cep.server.utils import (
         SERVER_DATA_DIR,
         save_db,
-        load_db,
+        get_network_store,
         )
 from cep.server.dns import (
         add_host_to_dns,
@@ -29,8 +30,7 @@ host_router = APIRouter(prefix="/host")
 
 #TODO: test_this by creating host with and without dns make sure saving works as expected 
 @host_router.post("/create")
-def create(request: HostRequest) -> HostRecord:
-    network_store = load_db()
+def create(request: HostRequest, network_store: NetworkStore = Depends(get_network_store)) -> HostRecord:
     network_record = network_store.networks.get(request.network_name, None)
 
     if not network_record:
@@ -67,8 +67,7 @@ def create(request: HostRequest) -> HostRecord:
 
 # TODO: test_this (DONE!!) implicitly with dns api integration tests
 @host_router.delete("/delete")
-def delete(network_name: str, host_name: str):
-    network_store = load_db()
+def delete(network_name: str, host_name: str, network_store: NetworkStore = Depends(get_network_store)):
     network_record = network_store.networks.get(network_name, None)
     try:
         del network_record.hosts[host_name]
@@ -84,8 +83,7 @@ def delete(network_name: str, host_name: str):
 
 #TODO: test_this (DONE!!): create dummy database and check if the contents match the spec
 @host_router.get("/show")
-def show(network_name: str, host_name: str) -> HostRecord:
-    network_store = load_db()
+def show(network_name: str, host_name: str, network_store: NetworkStore = Depends(get_network_store)) -> HostRecord:
     network_record = network_store.networks.get(network_name, None)
     if network_record is None:
         raise HTTPException(
@@ -103,11 +101,10 @@ def show(network_name: str, host_name: str) -> HostRecord:
 
 
 #TODO: test_this (DONE!!)
-def _sign(request: CertificateRequest) -> SignedCertificate:
+def _sign(request: CertificateRequest, network_store: NetworkStore) -> SignedCertificate:
     network_name = request.network_name
     host_name = request.host_name
 
-    network_store = load_db()
     network_record = network_store.networks.get(network_name)
     host_record = network_record.hosts.get(host_name)
     ip = f"{host_record.ip}/64"
@@ -142,8 +139,8 @@ def _sign(request: CertificateRequest) -> SignedCertificate:
 
 
 @host_router.post("/sign")
-def sign(request: CertificateRequest):
-    signed_certificate = _sign(request)
+def sign(request: CertificateRequest, network_store: NetworkStore = Depends(get_network_store)):
+    signed_certificate = _sign(request, network_store)
     cert_path = signed_certificate.cert_path
     ca_cert_path = signed_certificate.ca_cert_path
 

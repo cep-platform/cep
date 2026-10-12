@@ -1,17 +1,17 @@
 import os
 
 from typing import Optional
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
 import httpx
 from fastapi.exceptions import HTTPException
 import requests
 
 from cep.apps.caddy import CaddyReverseProxy
 from cep.apps.docker import PROXY_PORT_LABEL
-from cep.datamodels import AppRecord, AddAAAARequest
+from cep.datamodels import AppRecord, AddAAAARequest, NetworkStore
 from cep.server.apps.store import store_router
 from cep.server.dns import add_host_to_dns, remove_host_from_dns
-from cep.server.utils import load_db, save_db
+from cep.server.utils import get_network_store, save_db
 
 apps_router = APIRouter(prefix="/apps")
 apps_router.include_router(store_router)
@@ -45,8 +45,7 @@ def _deployed_service(resp: httpx.Response, name: str) -> dict:
 
 
 @apps_router.post("/deployProxy")
-def deploy(name: str, network_name: str):
-    network_store = load_db()
+def deploy(name: str, network_name: str, network_store: NetworkStore = Depends(get_network_store)):
     network_record = network_store.networks.get(network_name)
 
     if not network_record:
@@ -144,8 +143,7 @@ def _list_up_proxy():
 
 #NOTE: still gets time outs despite async def debug later
 @apps_router.delete("/targetedDestroyProxy")
-async def _targeted_destroy_proxy(name: str, network_name: str):
-    network_store = load_db()
+async def _targeted_destroy_proxy(name: str, network_name: str, network_store: NetworkStore = Depends(get_network_store)):
     network_record = network_store.networks.get(network_name)
 
     if not network_record:
