@@ -70,7 +70,7 @@ def api(server_dir, mock_dns, mock_create_ca, monkeypatch) -> TestClient:
     monkeypatch.delenv("CEP_SERVER_TOKEN", raising=False)
 
     from cep.server.main import instantiate_main_app
-    from cep.server import network, host, dns, storage
+    from cep.server import network, host, dns
     from cep.server.apps import apps_router
 
     app = instantiate_main_app()
@@ -78,7 +78,6 @@ def api(server_dir, mock_dns, mock_create_ca, monkeypatch) -> TestClient:
     app.include_router(host.host_router)
     app.include_router(apps_router)
     app.include_router(dns.dns_router)
-    app.include_router(storage.storage_router)
 
     return TestClient(app)
 

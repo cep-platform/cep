@@ -15,7 +15,7 @@ Cep consists of four components:
 
 | Component | Port | Description |
 |-----------|------|------------|
-| cep-main | 8000 | FastAPI server - network/host/storage/DNS management |
+| cep-main | 8000 | FastAPI server - network/host/DNS management |
 | cep-appstore | 8000 | FastAPI server - Docker container deployment |
 | cep-client | - | Nebula peer connecting to VPN network |
 | cep-dns | 8053 | Unbound DNS for internal resolution |

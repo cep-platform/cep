@@ -1,14 +1,12 @@
 from contextlib import asynccontextmanager
 from time import sleep
-from typing import Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 
 import requests
 
 from cep.apps.docker import Docker, ComposeConfig
 from cep.apps.caddy import CaddyReverseProxy
 from cep.apps.store import store_router
-from cep.storage.docker import Pool, Volume, list_pools, list_all_volumes
 
 CADDY_INIT_ATTEMPTS = 3
 CADDY_INIT_RETRY_DELAY = 5.0
@@ -139,76 +137,3 @@ async def _delete():
     return_code = await Docker.clear()
     if return_code == 0:
         Docker.clear_deployment_file()
-
-
-# ---------------------------------------------------------------------------
-# Storage endpoints - filesystem operations on host bind mount
-# ---------------------------------------------------------------------------
-
-
-@app.get("/storage/pools")
-def storage_list_pools():
-    return list_pools()
-
-
-@app.post("/storage/pools/create")
-def storage_create_pool(name: str):
-    try:
-        result = Pool(name).create()
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-
-@app.delete("/storage/pools/delete")
-def storage_delete_pool(name: str):
-    try:
-        Pool(name).delete()
-        return {"status": "deleted", "name": name}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.get("/storage/pools/stats")
-def storage_pool_stats(name: str):
-    try:
-        return Pool(name).get_stats()
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.get("/storage/volumes")
-def storage_list_volumes(pool_name: Optional[str] = None):
-    if pool_name:
-        try:
-            return Pool(pool_name).list_volumes()
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-    return list_all_volumes()
-
-
-@app.post("/storage/volumes/create")
-def storage_create_volume(pool_name: str, name: str):
-    try:
-        result = Volume(pool_name, name).create()
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-
-@app.delete("/storage/volumes/delete")
-def storage_delete_volume(pool_name: str, name: str):
-    try:
-        Volume(pool_name, name).delete()
-        return {"status": "deleted", "pool_name": pool_name, "name": name}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.get("/storage/volumes/stats")
-def storage_volume_stats(pool_name: str, name: str):
-    try:
-        return Volume(pool_name, name).info()
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
