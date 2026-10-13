@@ -24,6 +24,9 @@ def _list():
 def create(name: str, dns: bool = True):
     request = NetworkCreateRequest(name=name, dns=dns)
     resp = client.post("/create", json=request.model_dump(mode="json"))
+    if resp.status_code == 409:
+        print(f"[red]Error:[/red] {resp.json()['detail']}")
+        raise typer.Exit(1)
     resp.raise_for_status()
 
 
