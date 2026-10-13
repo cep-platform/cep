@@ -69,6 +69,11 @@ def create(request: HostRequest, network_store: NetworkStore = Depends(get_netwo
 @host_router.delete("/delete")
 def delete(network_name: str, host_name: str, network_store: NetworkStore = Depends(get_network_store)):
     network_record = network_store.networks.get(network_name, None)
+    if network_record is None:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Network {network_name} not found",
+                )
     try:
         del network_record.hosts[host_name]
         save_db(network_store)
@@ -106,7 +111,19 @@ def _sign(request: CertificateRequest, network_store: NetworkStore) -> SignedCer
     host_name = request.host_name
 
     network_record = network_store.networks.get(network_name)
+    if network_record is None:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Network {network_name} not found",
+                )
+
     host_record = network_record.hosts.get(host_name)
+    if host_record is None:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Host {host_name} not found in {network_name}",
+                )
+
     ip = f"{host_record.ip}/64"
 
     tempdir = Path(tempfile.TemporaryDirectory(delete=False).name)

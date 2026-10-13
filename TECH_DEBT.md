@@ -20,12 +20,18 @@ Findings are grouped by severity. File references use `path:line`.
 
 ## 1. Bugs (broken behavior today)
 
-### 1.1 500s instead of 404s on missing resources
+### 1.1 500s instead of 404s on missing resources — ✅ RESOLVED
 - `src/cep/server/host.py:69` — `host delete` with an unknown network:
   `network_record` is `None` → `AttributeError` on `.hosts` → 500.
 - `src/cep/server/host.py:98-100` — `_sign` does `.get()` on
   networks/hosts without checking; unknown network or host → `AttributeError`
   → 500.
+
+> **Resolved** on `bugfix/gracefully-handle-host-server-errors`: `delete` and
+> `_sign` now raise `HTTPException(404)` for unknown network/host. Regression
+> tests added in `tests/test_host_endpoints.py`
+> (`TestHostDelete::test_returns_404_for_unknown_network`,
+> `TestSign::test_raises_404_*`, `TestSign::test_sign_endpoint_returns_404_*`).
 
 ### 1.2 `create_ca` / certificate signing are fragile
 - `src/cep/server/network.py:38-46` — `create_ca` runs `nebula-cert ca` in
@@ -228,10 +234,10 @@ Current suite: 128 tests, all passing, no live server/docker/network needed
 - **No CLI ↔ server contract tests**: the CLI builds requests by hand against
   hardcoded paths; add a round-trip test per command (CliRunner → mocked
   httpx → TestClient router) so path/verb drift gets caught.
-- Would-have-caught-it tests: duplicate network create (1.3), host delete
-  with unknown network (1.1), caddy `null`-config bootstrap (1.4), template
-  validity (1.5 — lint every `app_templates/*.yml` for a defined `cep`
-  network and a sane proxy port).
+- Would-have-caught-it tests: duplicate network create (1.3), caddy
+  `null`-config bootstrap (1.4), template validity (1.5 — lint every
+  `app_templates/*.yml` for a defined `cep` network and a sane proxy port).
+  (1.1's host-delete/sign 404 tests have since been added.)
 - Auth behavior itself is untested: token set → 401 on bad/missing token;
   token unset → warn/refuse (2.1).
 - No test exercises `uvicorn`-level serving, `connect`/`disconnect`, or the
@@ -241,7 +247,7 @@ Current suite: 128 tests, all passing, no live server/docker/network needed
 
 ## 6. Suggested priority
 
-1. **Correctness**: 1.3, 1.4, 1.5 (+ template lint test), 1.1.
+1. **Correctness**: 1.3, 1.4, 1.5 (+ template lint test). (1.1 done.)
 2. **Security**: fail-closed auth (2.1), verify nebula downloads (2.2),
    tighten firewall default (2.3).
 3. **State**: atomic/locked db writes + deploy compensation (§3).
