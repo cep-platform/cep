@@ -4,6 +4,7 @@ import typer
 from rich import print
 
 from cep.cli.utils import get_client, CLI_DATA_DIR
+from cep.datamodels import NetworkCreateRequest
 
 
 network_app = typer.Typer()
@@ -21,7 +22,8 @@ def _list():
 
 @network_app.command()
 def create(name: str, dns: bool = True):
-    resp = client.get("/create", params={'name': name, 'dns': dns})
+    request = NetworkCreateRequest(name=name, dns=dns)
+    resp = client.post("/create", json=request.model_dump(mode="json"))
     resp.raise_for_status()
 
 

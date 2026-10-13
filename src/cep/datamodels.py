@@ -62,6 +62,11 @@ class NetworkStore(BaseModel):
     networks: dict[str, NetworkRecord]
 
 
+class NetworkCreateRequest(BaseModel):
+    name: str
+    dns: bool
+
+
 class HostRecord(BaseModel):
     name: str
     ip: ipaddress.IPv6Address

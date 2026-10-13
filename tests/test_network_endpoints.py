@@ -69,7 +69,7 @@ class TestNetworkCreateCaFailure:
         monkeypatch.setattr("cep.server.network.get_executable_path", lambda name: "/fake/nebula-cert")
         monkeypatch.setattr("cep.server.network.subprocess.run", MagicMock(side_effect=error))
 
-        resp = api_real_ca.get("/network/create", params={"name": "failnet", "dns": False})
+        resp = api_real_ca.post("/network/create", json={"name": "failnet", "dns": False})
 
         assert resp.status_code == 500
         assert "boom" in resp.json()["detail"]
@@ -88,7 +88,7 @@ class TestNetworkCreateCaFailure:
         monkeypatch.setattr("cep.server.network.get_executable_path", lambda name: "/fake/nebula-cert")
         monkeypatch.setattr("cep.server.network.subprocess.run", MagicMock(side_effect=error))
 
-        resp = api_real_ca.get("/network/create", params={"name": "failnet", "dns": False})
+        resp = api_real_ca.post("/network/create", json={"name": "failnet", "dns": False})
 
         assert resp.status_code == 500
         assert (net_dir / "ca.crt").read_text() == "existing-ca", \
