@@ -61,10 +61,27 @@ def _list() -> list[str]:
 
 @network_router.post("/create")
 def create(request: NetworkCreateRequest, network_store: NetworkStore = Depends(get_network_store)) -> NetworkRecord:
+    if request.name in network_store.networks:
+        raise HTTPException(
+                status_code=409,
+                detail=f"Network '{request.name}' already exists",
+                )
+
+    network_data_dir = SERVER_DATA_DIR / request.name
+    if network_data_dir.exists():
+        raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Data for network '{request.name}' exists on disk but there is no DB record; "
+                    f"remove {network_data_dir} or run 'cep network delete {request.name}' first"
+                    ),
+                )
+
     subnet = generate_ula_prefix()
     network_record = NetworkRecord(name=request.name, subnet=subnet, hosts={}, apps={}, dns=request.dns)
 
-    network_data_dir = SERVER_DATA_DIR / network_record.name
+    # Unreachable today (guarded above), kept so the CA-failure cleanup below
+    # stays correct if the guard is ever relaxed.
     dir_existed = network_data_dir.exists()
     network_data_dir.mkdir(exist_ok=True)
 
