@@ -29,6 +29,9 @@ lighthouses:
 create (CA failure path):
 - Returns 500 with nebula-cert stderr and persists no DB record when CA
   creation fails (create_ca unit tests live in test_network_helpers.py)
+- Removes the data dir it just created so /network/list (which reads the
+  data dir, not the DB) stays in sync with the DB
+- Leaves a pre-existing data dir untouched (duplicate-name create safety)
 """
 from __future__ import annotations
 
@@ -61,7 +64,7 @@ def api_real_ca(server_dir, mock_dns, monkeypatch) -> TestClient:
 
 
 class TestNetworkCreateCaFailure:
-    def test_create_endpoint_returns_500_and_saves_nothing_when_ca_fails(self, api_real_ca, monkeypatch):
+    def test_create_endpoint_returns_500_and_saves_nothing_when_ca_fails(self, api_real_ca, server_dir, monkeypatch):
         error = subprocess.CalledProcessError(1, cmd=["nebula-cert"], stderr="boom")
         monkeypatch.setattr("cep.server.network.get_executable_path", lambda name: "/fake/nebula-cert")
         monkeypatch.setattr("cep.server.network.subprocess.run", MagicMock(side_effect=error))
@@ -72,6 +75,24 @@ class TestNetworkCreateCaFailure:
         assert "boom" in resp.json()["detail"]
         store = load_db()
         assert "failnet" not in store.networks, "Failed CA creation must not persist a network record"
+        assert not (server_dir / "failnet").exists(), \
+            "Failed CA creation must not leave an empty data dir behind (phantom entry in /network/list)"
+
+    def test_create_endpoint_leaves_existing_data_dir_untouched_when_ca_fails(self, api_real_ca, server_dir, monkeypatch):
+        """Duplicate-name safety: a failed create must not delete an existing network's data."""
+        net_dir = server_dir / "failnet"
+        net_dir.mkdir()
+        (net_dir / "ca.crt").write_text("existing-ca")
+
+        error = subprocess.CalledProcessError(1, cmd=["nebula-cert"], stderr="boom")
+        monkeypatch.setattr("cep.server.network.get_executable_path", lambda name: "/fake/nebula-cert")
+        monkeypatch.setattr("cep.server.network.subprocess.run", MagicMock(side_effect=error))
+
+        resp = api_real_ca.get("/network/create", params={"name": "failnet", "dns": False})
+
+        assert resp.status_code == 500
+        assert (net_dir / "ca.crt").read_text() == "existing-ca", \
+            "A pre-existing data dir must be left untouched on failure"
 
 
 class TestNetworkDelete:

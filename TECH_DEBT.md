@@ -49,10 +49,17 @@ Findings are grouped by severity. File references use `path:line`.
 > `check=True`, and raises `HTTPException(400)` with stderr on signing
 > failure. Regression tests: `tests/test_network_helpers.py::TestCreateCa`
 > (explicit output paths, stale-CWD decoys ignored, 500 on failure),
-> `tests/test_network_endpoints.py::TestNetworkCreateCaFailure`,
-> `tests/test_host_endpoints.py::TestSign` (`test_raises_400_on_signing_failure`,
+> `tests/test_network_endpoints.py::TestNetworkCreateCaFailure`
+> (500 + no DB record + data dir cleaned up on failure, pre-existing dir
+> untouched), `tests/test_host_endpoints.py::TestSign` (`test_raises_400_on_signing_failure`,
 > `test_raises_500_when_ca_files_missing`,
 > `test_sign_endpoint_returns_400_on_signing_failure`).
+>
+> Follow-up: the `/network/create` endpoint removes the data directory it
+> just created when CA creation fails (a directory that already existed —
+> duplicate-name create — is left untouched), so `/network/list`, which
+> reads the data dir rather than the DB, cannot show a phantom network
+> without a DB record.
 
 ### 1.3 Network creation has no duplicate guard
 - `src/cep/server/network.py:57` — creating a network whose name already
