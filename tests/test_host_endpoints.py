@@ -19,6 +19,7 @@ delete:
 - Removes host from DB
 - Calls remove_host_from_dns with the host name
 - Returns 404 for an unknown host
+- Returns 404 for an unknown network
 
 show:
 - Returns all HostRecord fields exactly as stored
@@ -31,6 +32,8 @@ _sign:
 - Calls nebula-cert sign with the correct arguments
 - Writes the public key to a temp file before calling nebula-cert
 - Returns a SignedCertificate whose cert_path and ca_cert_path exist
+- Raises 404 for an unknown network
+- Raises 404 for an unknown host
 """
 from __future__ import annotations
 
@@ -204,6 +207,11 @@ class TestHostDelete:
         resp = api.delete("/host/delete", params={"network_name": "testnet", "host_name": "ghost"})
         assert resp.status_code == 404
 
+    def test_returns_404_for_unknown_network(self, api, server_dir):
+        resp = api.delete("/host/delete", params={"network_name": "ghost", "host_name": "lh1"})
+        assert resp.status_code == 404
+        assert "ghost" in resp.json()["detail"]
+
 
 # ---------------------------------------------------------------------------
 # /host/show
@@ -317,3 +325,45 @@ class TestSign:
 
         assert result.ca_cert_path == net_dir / "ca.crt"
         assert result.cert_path.name == "node1.crt"
+
+    def test_raises_404_for_unknown_network(self, server_dir):
+        from fastapi.exceptions import HTTPException
+
+        req = CertificateRequest(
+            network_name="ghost",
+            host_name="node1",
+            pub_key="-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----",
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            _sign(req, load_db())
+        assert exc_info.value.status_code == 404
+
+    def test_raises_404_for_unknown_host(self, server_dir):
+        from fastapi.exceptions import HTTPException
+
+        seed_network(server_dir, name="testnet")
+
+        req = CertificateRequest(
+            network_name="testnet",
+            host_name="ghost",
+            pub_key="-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----",
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            _sign(req, load_db())
+        assert exc_info.value.status_code == 404
+
+    def test_sign_endpoint_returns_404_for_unknown_network(self, api, server_dir):
+        resp = api.post(
+            "/host/sign",
+            json={"network_name": "ghost", "host_name": "node1", "pub_key": "fake"},
+        )
+        assert resp.status_code == 404
+
+    def test_sign_endpoint_returns_404_for_unknown_host(self, api, server_dir):
+        seed_network(server_dir, name="testnet")
+
+        resp = api.post(
+            "/host/sign",
+            json={"network_name": "testnet", "host_name": "ghost", "pub_key": "fake"},
+        )
+        assert resp.status_code == 404
