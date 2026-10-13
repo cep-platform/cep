@@ -60,9 +60,18 @@ def create(name: str, dns: bool, network_store: NetworkStore = Depends(get_netwo
     network_record = NetworkRecord(name=name, subnet=subnet, hosts={}, apps={}, dns=dns)
 
     network_data_dir = SERVER_DATA_DIR / network_record.name
+    dir_existed = network_data_dir.exists()
     network_data_dir.mkdir(exist_ok=True)
 
-    create_ca(name=name, ca_dir=network_data_dir)
+    try:
+        create_ca(name=name, ca_dir=network_data_dir)
+    except HTTPException:
+        # Don't leave a half-created (empty) data dir behind: /network/list
+        # reads the data dir, so it must not diverge from the DB. A directory
+        # that already existed (duplicate-name create) is left untouched.
+        if not dir_existed:
+            shutil.rmtree(network_data_dir, ignore_errors=True)
+        raise
 
     network_store.networks[network_record.name] = network_record
     save_db(network_store)
