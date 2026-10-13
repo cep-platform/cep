@@ -25,18 +25,53 @@ lighthouses:
 - Returns IPv6 lighthouse as "[ip]:4242"
 - Non-lighthouse hosts are excluded from the mapping
 - Returns 404 for an unknown network name
+
+create (CA failure path):
+- Returns 500 with nebula-cert stderr and persists no DB record when CA
+  creation fails (create_ca unit tests live in test_network_helpers.py)
 """
 from __future__ import annotations
 
 import ipaddress
 import json
+import subprocess
 from pathlib import Path
+from unittest.mock import MagicMock
 
 import pytest
+from fastapi.testclient import TestClient
 
 from cep.datamodels import HostRecord, NetworkRecord, NetworkStore
 from cep.server.utils import load_db, save_db
 from tests.conftest import seed_network
+
+
+@pytest.fixture()
+def api_real_ca(server_dir, mock_dns, monkeypatch) -> TestClient:
+    """TestClient for the network router with the real create_ca in place."""
+    monkeypatch.delenv("CEP_SERVER_TOKEN", raising=False)
+
+    from cep.server.main import instantiate_main_app
+    from cep.server import network
+
+    app = instantiate_main_app()
+    app.include_router(network.network_router)
+
+    return TestClient(app)
+
+
+class TestNetworkCreateCaFailure:
+    def test_create_endpoint_returns_500_and_saves_nothing_when_ca_fails(self, api_real_ca, monkeypatch):
+        error = subprocess.CalledProcessError(1, cmd=["nebula-cert"], stderr="boom")
+        monkeypatch.setattr("cep.server.network.get_executable_path", lambda name: "/fake/nebula-cert")
+        monkeypatch.setattr("cep.server.network.subprocess.run", MagicMock(side_effect=error))
+
+        resp = api_real_ca.get("/network/create", params={"name": "failnet", "dns": False})
+
+        assert resp.status_code == 500
+        assert "boom" in resp.json()["detail"]
+        store = load_db()
+        assert "failnet" not in store.networks, "Failed CA creation must not persist a network record"
 
 
 class TestNetworkDelete:
