@@ -12,17 +12,21 @@ generate_ula_prefix:
 - Is globally unique – two consecutive calls produce different prefixes
 
 create_ca:
-- Invokes nebula-cert with the correct arguments
-- Moves the generated ca.* files from cwd into ca_dir
+- Invokes nebula-cert with explicit -out-crt/-out-key paths inside ca_dir
+- Passes check=True so nebula-cert failures raise
+- Writes certs to the explicit paths; stale ca.* files in cwd are ignored
+- Raises 500 (with nebula-cert stderr) when CA creation fails
 - Returns ca_dir
 """
 from __future__ import annotations
 
 import ipaddress
+import subprocess
 from pathlib import Path
 from unittest.mock import call, patch, MagicMock
 
 import pytest
+from fastapi import HTTPException
 
 from cep.server.network import generate_ula_prefix, create_ca
 
@@ -67,49 +71,68 @@ class TestCreateCa:
         fake_bin = "/fake/nebula-cert"
 
         monkeypatch.setattr("cep.server.network.get_executable_path", lambda _: fake_bin)
-        monkeypatch.chdir(tmp_path)
-
-        # nebula-cert would normally create ca.crt and ca.key in cwd
-        (tmp_path / "ca.crt").write_text("cert")
-        (tmp_path / "ca.key").write_text("key")
 
         with patch("cep.server.network.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
             create_ca("mynet", ca_dir)
 
         mock_run.assert_called_once_with(
-            [fake_bin, "ca", "-name", "mynet"],
+            [
+                fake_bin, "ca", "-name", "mynet",
+                "-out-crt", ca_dir / "ca.crt",
+                "-out-key", ca_dir / "ca.key",
+            ],
             capture_output=True,
             text=True,
+            check=True,
         )
 
-    def test_moves_ca_files_into_ca_dir(self, tmp_path, monkeypatch):
+    def test_writes_to_explicit_paths_ignoring_stale_cwd_files(self, tmp_path, monkeypatch):
+        """Stale ca.* files in the CWD must neither be moved nor clobber ca_dir."""
+        workdir = tmp_path / "workdir"
+        workdir.mkdir()
+        (workdir / "ca.crt").write_text("stale-crt")
+        (workdir / "ca.key").write_text("stale-key")
+        monkeypatch.chdir(workdir)
+
         ca_dir = tmp_path / "ca"
         ca_dir.mkdir()
 
+        def _fake_run(cmd, **kwargs):
+            # Simulate nebula-cert writing to the explicit -out-* paths
+            Path(cmd[cmd.index("-out-crt") + 1]).write_text("fresh-crt")
+            Path(cmd[cmd.index("-out-key") + 1]).write_text("fresh-key")
+            return MagicMock(returncode=0)
+
         monkeypatch.setattr("cep.server.network.get_executable_path", lambda _: "/fake/nebula-cert")
-        monkeypatch.chdir(tmp_path)
 
-        (tmp_path / "ca.crt").write_text("fake-cert")
-        (tmp_path / "ca.key").write_text("fake-key")
-
-        with patch("cep.server.network.subprocess.run") as mock_run:
-            mock_run.return_value = MagicMock(returncode=0)
+        with patch("cep.server.network.subprocess.run", side_effect=_fake_run):
             create_ca("mynet", ca_dir)
 
-        assert (ca_dir / "ca.crt").exists(), "ca.crt should have been moved into ca_dir"
-        assert (ca_dir / "ca.key").exists(), "ca.key should have been moved into ca_dir"
-        assert not (tmp_path / "ca.crt").exists(), "ca.crt should no longer be in cwd"
-        assert not (tmp_path / "ca.key").exists(), "ca.key should no longer be in cwd"
+        assert (ca_dir / "ca.crt").read_text() == "fresh-crt"
+        assert (ca_dir / "ca.key").read_text() == "fresh-key"
+        assert (workdir / "ca.crt").read_text() == "stale-crt", "stale ca.crt in cwd must be untouched"
+        assert (workdir / "ca.key").read_text() == "stale-key", "stale ca.key in cwd must be untouched"
+
+    def test_raises_500_on_nebula_cert_failure(self, tmp_path, monkeypatch):
+        ca_dir = tmp_path / "ca"
+        ca_dir.mkdir()
+        error = subprocess.CalledProcessError(1, cmd=["nebula-cert"], stderr="boom")
+
+        monkeypatch.setattr("cep.server.network.get_executable_path", lambda _: "/fake/nebula-cert")
+
+        with patch("cep.server.network.subprocess.run", side_effect=error), \
+             pytest.raises(HTTPException) as exc_info:
+            create_ca("mynet", ca_dir)
+
+        assert exc_info.value.status_code == 500
+        assert "boom" in exc_info.value.detail
 
     def test_returns_ca_dir(self, tmp_path, monkeypatch):
         ca_dir = tmp_path / "ca"
         ca_dir.mkdir()
 
         monkeypatch.setattr("cep.server.network.get_executable_path", lambda _: "/fake/nebula-cert")
-        monkeypatch.chdir(tmp_path)
-        (tmp_path / "ca.crt").write_text("cert")
-        (tmp_path / "ca.key").write_text("key")
 
         with patch("cep.server.network.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)

@@ -32,16 +32,19 @@ def generate_ula_prefix() -> IPv6Network:
 #TODO: test_this (DONE!!)
 def create_ca(name: str, ca_dir: Path) -> Path:
     nebula_cert_executable_path = get_executable_path('nebula-cert')
-    subprocess.run([
-        nebula_cert_executable_path,
-        'ca',
-        '-name',
-        name,
-        ], capture_output=True, text=True)
-
-    ca_files = list(Path.cwd().glob('ca.*'))
-    for file in ca_files:
-        file.rename(ca_dir / file.name)
+    try:
+        subprocess.run([
+            nebula_cert_executable_path,
+            'ca',
+            '-name', name,
+            '-out-crt', ca_dir / 'ca.crt',
+            '-out-key', ca_dir / 'ca.key',
+            ], capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create CA for network '{name}': {e.stderr.strip()}",
+                )
 
     return ca_dir
 

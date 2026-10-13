@@ -34,10 +34,14 @@ _sign:
 - Returns a SignedCertificate whose cert_path and ca_cert_path exist
 - Raises 404 for an unknown network
 - Raises 404 for an unknown host
+- Raises 400 (with nebula-cert stderr) when signing fails
+- Raises 500 before invoking nebula-cert when the CA files are missing
+- The /sign endpoint surfaces signing failures as 400 instead of a bare 500
 """
 from __future__ import annotations
 
 import ipaddress
+import subprocess
 import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
@@ -351,6 +355,50 @@ class TestSign:
         with pytest.raises(HTTPException) as exc_info:
             _sign(req, load_db())
         assert exc_info.value.status_code == 404
+
+    def test_raises_400_on_signing_failure(self, server_dir):
+        from fastapi.exceptions import HTTPException
+
+        net_dir, req = self._setup(server_dir)
+        error = subprocess.CalledProcessError(1, cmd=["nebula-cert"], stderr="bad pubkey")
+
+        with patch("cep.server.host.get_executable_path", return_value="/fake/nebula-cert"), \
+             patch("cep.server.host.subprocess.run", side_effect=error), \
+             pytest.raises(HTTPException) as exc_info:
+            _sign(req, load_db())
+
+        assert exc_info.value.status_code == 400
+        assert "bad pubkey" in exc_info.value.detail
+
+    def test_raises_500_when_ca_files_missing(self, server_dir):
+        from fastapi.exceptions import HTTPException
+
+        seed_network(server_dir, name="testnet")
+        _seed_host(server_dir, host_name="node1")
+        # intentionally no ca.crt/ca.key written
+
+        req = CertificateRequest(
+            network_name="testnet",
+            host_name="node1",
+            pub_key="-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----",
+        )
+        with patch("cep.server.host.subprocess.run") as mock_run, \
+             pytest.raises(HTTPException) as exc_info:
+            _sign(req, load_db())
+
+        assert exc_info.value.status_code == 500
+        mock_run.assert_not_called(), "nebula-cert must not run when CA files are missing"
+
+    def test_sign_endpoint_returns_400_on_signing_failure(self, api, server_dir):
+        net_dir, req = self._setup(server_dir)
+        error = subprocess.CalledProcessError(1, cmd=["nebula-cert"], stderr="bad pubkey")
+
+        with patch("cep.server.host.get_executable_path", return_value="/fake/nebula-cert"), \
+             patch("cep.server.host.subprocess.run", side_effect=error):
+            resp = api.post("/host/sign", json=req.model_dump(mode="json"))
+
+        assert resp.status_code == 400
+        assert "bad pubkey" in resp.json()["detail"]
 
     def test_sign_endpoint_returns_404_for_unknown_network(self, api, server_dir):
         resp = api.post(
