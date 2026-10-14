@@ -11,8 +11,8 @@ Covers:
 - add_rproxy dials the given destination verbatim (no name prefixing)
 - initialize_caddy_config posts the base config for the cep server
 - ensure_initialized is idempotent: skips when the cep server is present,
-  writes when the config is empty / has other servers / errors on GET,
-  and raises when caddy is unreachable
+  writes when the config is JSON null (a fresh caddy) / empty / has other
+  servers / errors on GET, and raises when caddy is unreachable
 """
 from __future__ import annotations
 
@@ -45,12 +45,15 @@ def _routes(config: dict) -> list:
     return config["apps"]["http"]["servers"][CADDY_SERVER_NAME]["routes"]
 
 
+_UNSET = object()  # sentinel for "json_data not given"; None means JSON null
+
+
 class _FakeResponse:
-    def __init__(self, json_data: dict | None = None, status_code: int = 200):
-        self._json = json_data if json_data is not None else {}
+    def __init__(self, json_data: object = _UNSET, status_code: int = 200):
+        self._json = {} if json_data is _UNSET else json_data
         self.status_code = status_code
 
-    def json(self) -> dict:
+    def json(self) -> object:
         return self._json
 
     def raise_for_status(self) -> None:
@@ -194,6 +197,20 @@ class TestEnsureInitialized:
 
         assert CaddyReverseProxy.ensure_initialized() is True
         assert len(recorder.posts) == 1
+
+    def test_writes_when_config_is_null(self, monkeypatch):
+        """Regression (TECH_DEBT 1.4): a fresh caddy answers GET /config
+        with 200 and a JSON null body; bootstrap must install the base
+        config instead of crashing with AttributeError."""
+        recorder = _RequestsRecorder(get_response=_FakeResponse(json_data=None))
+        monkeypatch.setattr("cep.apps.caddy.requests", recorder)
+
+        assert CaddyReverseProxy.ensure_initialized() is True
+
+        url, posted = recorder.posts[0]
+        assert url == f"{CADDY_ADMIN_URL}/load"
+        server = posted["apps"]["http"]["servers"][CADDY_SERVER_NAME]
+        assert server["listen"] == [":80"]
 
     def test_writes_when_only_other_servers_present(self, monkeypatch):
         config = {"apps": {"http": {"servers": {"srv0": {"listen": [":80"]}}}}}

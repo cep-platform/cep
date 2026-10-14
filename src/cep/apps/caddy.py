@@ -45,13 +45,16 @@ class CaddyReverseProxy(ReverseProxy):
 
     @staticmethod
     def config() -> dict:
+        # A fresh caddy answers GET /config with HTTP 200 and a JSON null
+        # body (not {}); normalize it so "no config" stays a dict (see
+        # TECH_DEBT 1.4).
         response = requests.get(
                 f"{CADDY_ADMIN_URL}/config",
                 timeout=REQUEST_TIMEOUT,
                 )
 
         response.raise_for_status()
-        return response.json()
+        return response.json() or {}
 
     @staticmethod
     def initialize_caddy_config(name: str = CADDY_SERVER_NAME) -> None:

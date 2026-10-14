@@ -78,11 +78,19 @@ Findings are grouped by severity. File references use `path:line`.
 > (409 preserves hosts/subnet/CA, `create_ca` never invoked, orphan dir
 > rejected), plus happy-path coverage in `TestNetworkCreate`.
 
-### 1.4 Caddy bootstrap crashes on a fresh container
+### 1.4 Caddy bootstrap crashes on a fresh container — ✅ RESOLVED
 - `src/cep/apps/caddy.py:82-90` — Caddy's admin API returns JSON `null` for
   `GET /config` when no config is loaded. `config()` then returns `None` and
   `ensure_initialized` crashes with `AttributeError` (only `HTTPError` is
   caught). Handle the `None` case.
+
+> **Resolved** on `bugfix/caddy-null-config-bootstrap`: `config()` normalizes
+> the `null` body to `{}` (`response.json() or {}`), so `ensure_initialized`
+> treats a fresh container as "no config" and installs the base config
+> instead of crashing. Regression test:
+> `tests/test_caddy.py::TestEnsureInitialized::test_writes_when_config_is_null`
+> (the `_FakeResponse` helper previously couldn't represent a `null` body
+> — its `json_data=None` default mapped to `{}`).
 
 ### 1.5 App templates are broken standalone
 - `mongo.yml`, `nginx.yml`, `postgres.yml`, `python.yml`, `redis.yml`
@@ -271,10 +279,10 @@ Current suite: 128 tests, all passing, no live server/docker/network needed
 - **No CLI ↔ server contract tests**: the CLI builds requests by hand against
   hardcoded paths; add a round-trip test per command (CliRunner → mocked
   httpx → TestClient router) so path/verb drift gets caught.
-- Would-have-caught-it tests: caddy `null`-config bootstrap (1.4),
-  template validity (1.5 — lint every `app_templates/*.yml` for a defined
-  `cep` network and a sane proxy port). (1.1's host-delete/sign 404 tests
-  and 1.3's duplicate-create tests have since been added.)
+- Would-have-caught-it tests: template validity (1.5 — lint every
+  `app_templates/*.yml` for a defined `cep` network and a sane proxy port).
+  (1.1's host-delete/sign 404 tests, 1.3's duplicate-create tests, and 1.4's
+  null-config bootstrap test have since been added.)
 - Auth behavior itself is untested: token set → 401 on bad/missing token;
   token unset → warn/refuse (2.1).
 - No test exercises `uvicorn`-level serving, `connect`/`disconnect`, or the
@@ -284,7 +292,7 @@ Current suite: 128 tests, all passing, no live server/docker/network needed
 
 ## 6. Suggested priority
 
-1. **Correctness**: 1.4, 1.5 (+ template lint test). (1.1, 1.3, 1.7 done.)
+1. **Correctness**: 1.5 (+ template lint test). (1.1, 1.3, 1.4, 1.7 done.)
 2. **Security**: fail-closed auth (2.1), verify nebula downloads (2.2),
    tighten firewall default (2.3).
 3. **State**: atomic/locked db writes + deploy compensation (§3).
