@@ -1,12 +1,20 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from enum import Enum
 
 import requests
 
 CADDY_SERVER_NAME = "cep"
 CADDY_ADMIN_URL = "http://cep-caddy:2019"
 REQUEST_TIMEOUT = 10
+
+
+class CaddyInitOutcome(str, Enum):
+    """What ensure_initialized() actually did on this call."""
+
+    WROTE_CONFIG = "wrote_config"
+    ALREADY_INITIALIZED = "already_initialized"
 
 
 class ReverseProxy(ABC):
@@ -70,12 +78,15 @@ class CaddyReverseProxy(ReverseProxy):
         CaddyReverseProxy._update_config(init_config)
 
     @staticmethod
-    def ensure_initialized(name: str = CADDY_SERVER_NAME) -> bool:
+    def ensure_initialized(name: str = CADDY_SERVER_NAME) -> CaddyInitOutcome:
         """
         Install the base caddy config only when the cep server is missing.
 
-        Returns True when the config was written, False when the cep server
-        was already present, so appstore restarts never wipe existing routes.
+        Reports the action taken on THIS call: WROTE_CONFIG when the base
+        config was installed, ALREADY_INITIALIZED when the cep server was
+        already present and nothing was written, so appstore restarts never
+        wipe existing routes. The call is idempotent: running it again after
+        WROTE_CONFIG yields ALREADY_INITIALIZED with no further changes.
         Raises requests exceptions when caddy is unreachable.
         """
         try:
@@ -85,10 +96,10 @@ class CaddyReverseProxy(ReverseProxy):
 
         servers = config.get("apps", {}).get("http", {}).get("servers", {})
         if servers.get(name):
-            return False
+            return CaddyInitOutcome.ALREADY_INITIALIZED
 
         CaddyReverseProxy.initialize_caddy_config(name)
-        return True
+        return CaddyInitOutcome.WROTE_CONFIG
 
     @staticmethod
     def _update_config(config: dict) -> None:
