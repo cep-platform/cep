@@ -11,7 +11,7 @@ from cep.apps.store import store_router
 from cep.storage.docker import Pool, Volume, list_pools, list_all_volumes
 
 CADDY_INIT_ATTEMPTS = 3
-CADDY_INIT_RETRY_DELAY = 5.0
+CADDY_INIT_RETRY_DELAY = 9.0
 
 
 def _init_caddy_with_retry() -> None:
