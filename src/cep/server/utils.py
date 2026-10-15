@@ -1,46 +1,17 @@
-import json
+"""Server-local path configuration.
+
+Persistence lives in `cep.server.db`, which resolves its locations from
+`SERVER_DATA_DIR` lazily so tests can redirect them via monkeypatch.
+"""
+from __future__ import annotations
+
 from pathlib import Path
 
-from cep.datamodels import NetworkStore
 from cep.utils import DATA_DIR
-
 
 SERVER_DATA_DIR = DATA_DIR / 'server'
 SERVER_DATA_DIR.mkdir(exist_ok=True)
-DB_PATH = SERVER_DATA_DIR / 'db.json'
 CEP_SERVER_CFG_PATH = Path.home() / '.cepservercfg'
-
-#TODO: test_this (DONE!!): existing and non existing dbs need to be identified
-def load_db() -> NetworkStore:
-    if not DB_PATH.exists():
-        return NetworkStore(networks={})
-
-    with DB_PATH.open("r", encoding="utf-8") as f:
-        raw = json.load(f)
-
-    return NetworkStore.model_validate(raw)
-
-#TODO: test_this (DONE!!): existing and non existing dbs need to be identified
-def save_db(store: NetworkStore) -> None:
-    with DB_PATH.open("w", encoding="utf-8") as f:
-        json.dump(
-            store.model_dump(),
-            f,
-            indent=2,
-            sort_keys=True,
-        )
-
-
-def get_network_store() -> NetworkStore:
-    """
-    FastAPI dependency that provides the NetworkStore for a request.
-
-    Endpoints declare ``network_store: NetworkStore = Depends(get_network_store)``
-    instead of calling load_db() manually. FastAPI caches dependencies per
-    request, so all consumers within one request share a single snapshot.
-    Mutating endpoints still persist explicitly via save_db().
-    """
-    return load_db()
 
 
 def load_AAAA_records() -> dict[str, str]:

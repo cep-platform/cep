@@ -57,7 +57,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cep.datamodels import HostRecord, NetworkRecord, NetworkStore
-from cep.server.utils import load_db, save_db
+from cep.server.db import load_db, save_db
 from tests.conftest import seed_network
 
 

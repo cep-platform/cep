@@ -16,11 +16,8 @@ from cep.datamodels import (
         SignedCertificate,
         NetworkStore,
         )
-from cep.server.utils import (
-        SERVER_DATA_DIR,
-        save_db,
-        get_network_store,
-        )
+from cep.server.utils import SERVER_DATA_DIR
+from cep.server.db import get_network_store, get_network_store_write
 from cep.server.dns import (
         add_host_to_dns,
         remove_host_from_dns,
@@ -28,9 +25,9 @@ from cep.server.dns import (
 
 host_router = APIRouter(prefix="/host")
 
-#TODO: test_this by creating host with and without dns make sure saving works as expected 
+#TODO: test_this (DONE!!): covered by endpoint tests + TestWriteDependencyEndpoints in test_server_db.py
 @host_router.post("/create")
-def create(request: HostRequest, network_store: NetworkStore = Depends(get_network_store)) -> HostRecord:
+def create(request: HostRequest, network_store: NetworkStore = Depends(get_network_store_write)) -> HostRecord:
     network_record = network_store.networks.get(request.network_name, None)
 
     if not network_record:
@@ -55,7 +52,7 @@ def create(request: HostRequest, network_store: NetworkStore = Depends(get_netwo
             )
 
     network_record.hosts[request.name] = host_record
-    save_db(network_store)
+    # No explicit save: the request's write transaction commits for us.
 
     if request.add_dns_record:
         domain_name = f"{request.name}.{network_record.name}"
@@ -67,7 +64,7 @@ def create(request: HostRequest, network_store: NetworkStore = Depends(get_netwo
 
 # TODO: test_this (DONE!!) implicitly with dns api integration tests
 @host_router.delete("/delete")
-def delete(network_name: str, host_name: str, network_store: NetworkStore = Depends(get_network_store)):
+def delete(network_name: str, host_name: str, network_store: NetworkStore = Depends(get_network_store_write)):
     network_record = network_store.networks.get(network_name, None)
     if network_record is None:
         raise HTTPException(
@@ -76,7 +73,6 @@ def delete(network_name: str, host_name: str, network_store: NetworkStore = Depe
                 )
     try:
         del network_record.hosts[host_name]
-        save_db(network_store)
         remove_host_from_dns(name=host_name)
     except KeyError:
         raise HTTPException(

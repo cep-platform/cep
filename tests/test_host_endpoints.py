@@ -54,7 +54,7 @@ from cep.datamodels import (
     NetworkRecord,
     NetworkStore,
 )
-from cep.server.utils import load_db, save_db
+from cep.server.db import load_db, save_db
 from cep.server.host import _sign
 from tests.conftest import seed_network
 
@@ -72,7 +72,7 @@ def _seed_host(
     public_ip: str = "1.2.3.4",
 ) -> HostRecord:
     """Add a host to an existing (or new) network in the DB."""
-    from cep.server.utils import load_db, save_db
+    from cep.server.db import load_db, save_db
 
     store = load_db()
     if network_name not in store.networks:

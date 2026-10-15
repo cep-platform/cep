@@ -11,7 +11,7 @@ from cep.apps.docker import PROXY_PORT_LABEL
 from cep.datamodels import AppRecord, AddAAAARequest, NetworkStore
 from cep.server.apps.store import store_router
 from cep.server.dns import add_host_to_dns, remove_host_from_dns
-from cep.server.utils import get_network_store, save_db
+from cep.server.db import get_network_store, get_network_store_write
 
 apps_router = APIRouter(prefix="/apps")
 apps_router.include_router(store_router)
@@ -45,7 +45,7 @@ def _deployed_service(resp: httpx.Response, name: str) -> dict:
 
 
 @apps_router.post("/deployProxy")
-def deploy(name: str, network_name: str, network_store: NetworkStore = Depends(get_network_store)):
+def deploy(name: str, network_name: str, network_store: NetworkStore = Depends(get_network_store_write)):
     network_record = network_store.networks.get(network_name)
 
     if not network_record:
@@ -114,7 +114,7 @@ def deploy(name: str, network_name: str, network_store: NetworkStore = Depends(g
                 )
 
     network_record.apps[name] = AppRecord(name=name, ip=cep.ip)
-    save_db(network_store)
+    # No explicit save: the request's write transaction commits for us.
     return Response(
         content=resp.content,
         status_code=resp.status_code,
@@ -143,7 +143,7 @@ def _list_up_proxy():
 
 #NOTE: still gets time outs despite async def debug later
 @apps_router.delete("/targetedDestroyProxy")
-async def _targeted_destroy_proxy(name: str, network_name: str, network_store: NetworkStore = Depends(get_network_store)):
+async def _targeted_destroy_proxy(name: str, network_name: str, network_store: NetworkStore = Depends(get_network_store_write)):
     network_record = network_store.networks.get(network_name)
 
     if not network_record:
@@ -196,7 +196,6 @@ async def _targeted_destroy_proxy(name: str, network_name: str, network_store: N
                 )
 
     del network_record.apps[name]
-    save_db(network_store)
     return Response(
         content=resp.content,
         status_code=resp.status_code,

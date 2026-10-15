@@ -30,7 +30,7 @@ import pytest
 import requests
 
 from cep.datamodels import AppRecord, HostRecord
-from cep.server.utils import load_db, save_db
+from cep.server.db import load_db, save_db
 from tests.conftest import FakeAppstoreResponse, seed_network
 
 
