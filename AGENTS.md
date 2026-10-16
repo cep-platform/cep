@@ -49,13 +49,12 @@ No linter/formatter is configured yet — if you add one, document it here.
 ```
 src/cep/
   cli/           Typer CLI. main.py registers sub-apps: network, host,
-                 server, dns, apps, storage. New commands: own module +
+                 server, dns, apps. New commands: own module +
                  register in cli/main.py.
   server/        cep-main FastAPI app. main.py builds app with bearer-token
-                 auth; routers: network, host, apps, dns, storage.
+                 auth; routers: network, host, apps, dns.
                  Persistence is a JSON file (db.json) in the user data dir.
   apps/          cep-appstore FastAPI app (Docker deploy + store router).
-  storage/       Storage abstraction: Pool / Volume over Docker.
   datamodels.py  Shared Pydantic models (NetworkRecord, HostRecord, ...).
                  Validators/serializers keep ipaddress types JSON-safe.
   utils.py       Nebula binary download/cache (~/.cache/nebula), platform
@@ -97,7 +96,6 @@ startupscripts/  Client container entrypoints.
 | DNS_TOKEN            | main / dns         | DNS API auth             |
 | LIGHTHOUSE_STABLE_IP | client / server    | Public IP of lighthouse  |
 | DNS_IP               | main               | DNS server IP            |
-| CEP_STORAGE_PATH     | appstore           | Bind-mount for storage   |
 
 ## Gotchas
 
