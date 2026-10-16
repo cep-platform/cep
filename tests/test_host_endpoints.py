@@ -276,7 +276,7 @@ class TestSign:
         with patch("cep.server.host.get_executable_path", return_value="/fake/nebula-cert"), \
              patch("cep.server.host.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            _sign(req)
+            _sign(req, load_db())
 
         args = mock_run.call_args[0][0]
         assert args[0] == "/fake/nebula-cert"
@@ -302,7 +302,7 @@ class TestSign:
              patch("cep.server.host.subprocess.run") as mock_run, \
              patch("builtins.open", side_effect=_capturing_open):
             mock_run.return_value = MagicMock(returncode=0)
-            _sign(req)
+            _sign(req, load_db())
 
         assert len(written_paths) == 1, "Expected exactly one .pub file to be written"
         assert written_paths[0].suffix == ".pub"
@@ -313,7 +313,7 @@ class TestSign:
         with patch("cep.server.host.get_executable_path", return_value="/fake/nebula-cert"), \
              patch("cep.server.host.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            result = _sign(req)
+            result = _sign(req, load_db())
 
         assert result.ca_cert_path == net_dir / "ca.crt"
         assert result.cert_path.name == "node1.crt"

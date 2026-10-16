@@ -4,14 +4,14 @@ import subprocess
 from ipaddress import IPv6Address, IPv6Network
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from cep.utils import get_executable_path
-from cep.datamodels import LighthouseResponse, NetworkRecord
+from cep.datamodels import LighthouseResponse, NetworkRecord, NetworkStore
 from cep.server.utils import (
         SERVER_DATA_DIR,
         save_db,
-        load_db,
+        get_network_store,
         )
 
 from cep.server.dns import (
@@ -52,7 +52,7 @@ def _list() -> list[str]:
 
 
 @network_router.get("/create")
-def create(name: str, dns: bool) -> NetworkRecord:
+def create(name: str, dns: bool, network_store: NetworkStore = Depends(get_network_store)) -> NetworkRecord:
     subnet = generate_ula_prefix()
     network_record = NetworkRecord(name=name, subnet=subnet, hosts={}, apps={}, dns=dns)
 
@@ -61,7 +61,6 @@ def create(name: str, dns: bool) -> NetworkRecord:
 
     create_ca(name=name, ca_dir=network_data_dir)
 
-    network_store = load_db()
     network_store.networks[network_record.name] = network_record
     save_db(network_store)
 
@@ -72,7 +71,7 @@ def create(name: str, dns: bool) -> NetworkRecord:
 
 #TODO: test_this (DONE!!): make sure network_record deletion is tested
 @network_router.delete("/delete")
-def delete(name: str):
+def delete(name: str, network_store: NetworkStore = Depends(get_network_store)):
     network_data_dir = SERVER_DATA_DIR / name
     if not network_data_dir.exists():
         raise HTTPException(status_code=404, detail="Network data not found")
@@ -81,7 +80,6 @@ def delete(name: str):
     shutil.rmtree(network_data_dir)
 
     # Delete from DB
-    network_store = load_db()
     if name not in network_store.networks:
         raise HTTPException(status_code=404, detail="Network not found")
     
@@ -99,8 +97,7 @@ def delete(name: str):
 
 #TODO: test_this (DONE!!): create dummy database and check if the contents match the spec
 @network_router.get("/show")
-def show(name: str) -> NetworkRecord:
-    network_store = load_db()
+def show(name: str, network_store: NetworkStore = Depends(get_network_store)) -> NetworkRecord:
     response = network_store.networks.get(name, None)
     if response:
         return response
@@ -109,8 +106,7 @@ def show(name: str) -> NetworkRecord:
 
 
 @network_router.get("/lighthouses")
-def lighthouses(network_name: str) -> LighthouseResponse:
-    network_store = load_db()
+def lighthouses(network_name: str, network_store: NetworkStore = Depends(get_network_store)) -> LighthouseResponse:
     network_record = network_store.networks.get(network_name, None)
     if not network_record:
         raise HTTPException(status_code=404, detail="Network not found")

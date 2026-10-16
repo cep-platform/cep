@@ -32,6 +32,18 @@ def save_db(store: NetworkStore) -> None:
         )
 
 
+def get_network_store() -> NetworkStore:
+    """
+    FastAPI dependency that provides the NetworkStore for a request.
+
+    Endpoints declare ``network_store: NetworkStore = Depends(get_network_store)``
+    instead of calling load_db() manually. FastAPI caches dependencies per
+    request, so all consumers within one request share a single snapshot.
+    Mutating endpoints still persist explicitly via save_db().
+    """
+    return load_db()
+
+
 def load_storage_db() -> StorageStore:
     if not STORAGE_DB_PATH.exists():
         return StorageStore()
