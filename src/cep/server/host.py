@@ -135,18 +135,29 @@ def _sign(request: CertificateRequest, network_store: NetworkStore) -> SignedCer
 
     ca_cert_path = SERVER_DATA_DIR / network_name / 'ca.crt'
     ca_key_path = SERVER_DATA_DIR / network_name / 'ca.key'
+    if not ca_cert_path.exists() or not ca_key_path.exists():
+        raise HTTPException(
+                status_code=500,
+                detail=f"CA files missing for network '{network_name}'",
+                )
 
     nebula_cert_executable_path = get_executable_path('nebula-cert')
-    subprocess.run([
-        nebula_cert_executable_path,
-        'sign',
-        '-in-pub', pub_key_path,
-        '-name', f'{host_name}.{network_name}',
-        '-ip', ip,
-        '-ca-crt', ca_cert_path,
-        '-ca-key', ca_key_path,
-        '-out-crt', cert_path,
-        ], capture_output=True, text=True)
+    try:
+        subprocess.run([
+            nebula_cert_executable_path,
+            'sign',
+            '-in-pub', pub_key_path,
+            '-name', f'{host_name}.{network_name}',
+            '-ip', ip,
+            '-ca-crt', ca_cert_path,
+            '-ca-key', ca_key_path,
+            '-out-crt', cert_path,
+            ], capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+                status_code=400,
+                detail=f"Certificate signing failed: {e.stderr.strip()}",
+                )
 
     return SignedCertificate(
             ca_cert_path=ca_cert_path,

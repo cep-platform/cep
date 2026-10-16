@@ -33,7 +33,7 @@ Findings are grouped by severity. File references use `path:line`.
 > (`TestHostDelete::test_returns_404_for_unknown_network`,
 > `TestSign::test_raises_404_*`, `TestSign::test_sign_endpoint_returns_404_*`).
 
-### 1.2 `create_ca` / certificate signing are fragile
+### 1.2 `create_ca` / certificate signing are fragile — ✅ RESOLVED
 - `src/cep/server/network.py:38-46` — `create_ca` runs `nebula-cert ca` in
   the *current working directory* and then globs `Path.cwd()` for `ca.*`.
   Any stale `ca.crt`/`ca.key` in the CWD gets picked up/moved, and the
@@ -41,6 +41,25 @@ Findings are grouped by severity. File references use `path:line`.
 - `src/cep/server/host.py:116-125` — same pattern in `_sign`: no
   `check=True`; if signing fails, the follow-up `zipfile` write crashes with
   an unhelpful 500.
+
+> **Resolved** on `bugfix/robust-ca-creation-and-signing`: `create_ca` now
+> passes explicit `-out-crt`/`-out-key` paths inside `ca_dir` (CWD glob +
+> rename removed) and raises `HTTPException(500)` with nebula-cert's stderr
+> on failure. `_sign` verifies the CA files exist (500 otherwise), uses
+> `check=True`, and raises `HTTPException(400)` with stderr on signing
+> failure. Regression tests: `tests/test_network_helpers.py::TestCreateCa`
+> (explicit output paths, stale-CWD decoys ignored, 500 on failure),
+> `tests/test_network_endpoints.py::TestNetworkCreateCaFailure`
+> (500 + no DB record + data dir cleaned up on failure, pre-existing dir
+> untouched), `tests/test_host_endpoints.py::TestSign` (`test_raises_400_on_signing_failure`,
+> `test_raises_500_when_ca_files_missing`,
+> `test_sign_endpoint_returns_400_on_signing_failure`).
+>
+> Follow-up: the `/network/create` endpoint removes the data directory it
+> just created when CA creation fails (a directory that already existed —
+> duplicate-name create — is left untouched), so `/network/list`, which
+> reads the data dir rather than the DB, cannot show a phantom network
+> without a DB record.
 
 ### 1.3 Network creation has no duplicate guard
 - `src/cep/server/network.py:57` — creating a network whose name already

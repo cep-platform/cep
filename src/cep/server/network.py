@@ -32,16 +32,19 @@ def generate_ula_prefix() -> IPv6Network:
 #TODO: test_this (DONE!!)
 def create_ca(name: str, ca_dir: Path) -> Path:
     nebula_cert_executable_path = get_executable_path('nebula-cert')
-    subprocess.run([
-        nebula_cert_executable_path,
-        'ca',
-        '-name',
-        name,
-        ], capture_output=True, text=True)
-
-    ca_files = list(Path.cwd().glob('ca.*'))
-    for file in ca_files:
-        file.rename(ca_dir / file.name)
+    try:
+        subprocess.run([
+            nebula_cert_executable_path,
+            'ca',
+            '-name', name,
+            '-out-crt', ca_dir / 'ca.crt',
+            '-out-key', ca_dir / 'ca.key',
+            ], capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create CA for network '{name}': {e.stderr.strip()}",
+                )
 
     return ca_dir
 
@@ -57,9 +60,18 @@ def create(name: str, dns: bool, network_store: NetworkStore = Depends(get_netwo
     network_record = NetworkRecord(name=name, subnet=subnet, hosts={}, apps={}, dns=dns)
 
     network_data_dir = SERVER_DATA_DIR / network_record.name
+    dir_existed = network_data_dir.exists()
     network_data_dir.mkdir(exist_ok=True)
 
-    create_ca(name=name, ca_dir=network_data_dir)
+    try:
+        create_ca(name=name, ca_dir=network_data_dir)
+    except HTTPException:
+        # Don't leave a half-created (empty) data dir behind: /network/list
+        # reads the data dir, so it must not diverge from the DB. A directory
+        # that already existed (duplicate-name create) is left untouched.
+        if not dir_existed:
+            shutil.rmtree(network_data_dir, ignore_errors=True)
+        raise
 
     network_store.networks[network_record.name] = network_record
     save_db(network_store)
