@@ -26,12 +26,24 @@ lighthouses:
 - Non-lighthouse hosts are excluded from the mapping
 - Returns 404 for an unknown network name
 
+create (happy path):
+- Takes a NetworkCreateRequest body via POST; returns the persisted record
+- Writes the CA into the data dir and saves the DB record
+- Starts DNS only when dns=True
+
+create (duplicate guards):
+- Returns 409 when the name is already in the DB; existing hosts, subnet,
+  and CA files are untouched and create_ca is never invoked
+- Returns 409 when a data dir exists without a DB record (orphan dir)
+
 create (CA failure path):
 - Returns 500 with nebula-cert stderr and persists no DB record when CA
   creation fails (create_ca unit tests live in test_network_helpers.py)
 - Removes the data dir it just created so /network/list (which reads the
   data dir, not the DB) stays in sync with the DB
-- Leaves a pre-existing data dir untouched (duplicate-name create safety)
+
+(Pre-existing data dirs never reach the CA step: the duplicate/orphan
+guards above reject them with 409 first, contents untouched.)
 """
 from __future__ import annotations
 
@@ -69,7 +81,7 @@ class TestNetworkCreateCaFailure:
         monkeypatch.setattr("cep.server.network.get_executable_path", lambda name: "/fake/nebula-cert")
         monkeypatch.setattr("cep.server.network.subprocess.run", MagicMock(side_effect=error))
 
-        resp = api_real_ca.get("/network/create", params={"name": "failnet", "dns": False})
+        resp = api_real_ca.post("/network/create", json={"name": "failnet", "dns": False})
 
         assert resp.status_code == 500
         assert "boom" in resp.json()["detail"]
@@ -78,21 +90,69 @@ class TestNetworkCreateCaFailure:
         assert not (server_dir / "failnet").exists(), \
             "Failed CA creation must not leave an empty data dir behind (phantom entry in /network/list)"
 
-    def test_create_endpoint_leaves_existing_data_dir_untouched_when_ca_fails(self, api_real_ca, server_dir, monkeypatch):
-        """Duplicate-name safety: a failed create must not delete an existing network's data."""
-        net_dir = server_dir / "failnet"
-        net_dir.mkdir()
-        (net_dir / "ca.crt").write_text("existing-ca")
+class TestNetworkCreate:
+    def test_returns_record_and_persists_state(self, api, server_dir):
+        resp = api.post("/network/create", json={"name": "newnet", "dns": False})
 
-        error = subprocess.CalledProcessError(1, cmd=["nebula-cert"], stderr="boom")
-        monkeypatch.setattr("cep.server.network.get_executable_path", lambda name: "/fake/nebula-cert")
-        monkeypatch.setattr("cep.server.network.subprocess.run", MagicMock(side_effect=error))
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["name"] == "newnet"
+        assert body["hosts"] == {}
 
-        resp = api_real_ca.get("/network/create", params={"name": "failnet", "dns": False})
+        store = load_db()
+        assert "newnet" in store.networks, "Created network must be persisted in the DB"
+        assert (server_dir / "newnet" / "ca.crt").read_text() == "fake-ca-cert"
+        assert (server_dir / "newnet" / "ca.key").read_text() == "fake-ca-key"
 
-        assert resp.status_code == 500
-        assert (net_dir / "ca.crt").read_text() == "existing-ca", \
-            "A pre-existing data dir must be left untouched on failure"
+    def test_starts_dns_only_when_enabled(self, api, server_dir, monkeypatch):
+        start_calls = []
+        monkeypatch.setattr("cep.server.network.start_dns", lambda **kwargs: start_calls.append(kwargs))
+
+        resp_on = api.post("/network/create", json={"name": "dnsnet", "dns": True})
+        resp_off = api.post("/network/create", json={"name": "quietnet", "dns": False})
+
+        assert resp_on.status_code == 200
+        assert resp_off.status_code == 200
+        assert start_calls == [{"subnet": resp_on.json()["subnet"]}], \
+            "start_dns must run exactly once, for the dns=True network"
+
+
+class TestNetworkCreateDuplicate:
+    def test_returns_409_and_preserves_existing_network(self, api, server_dir):
+        seed_network(server_dir, name="mynet")
+        _seed_node(server_dir, network_name="mynet", host_name="node1")
+        net_dir = server_dir / "mynet"
+        (net_dir / "ca.crt").write_text("original-ca")
+
+        resp = api.post("/network/create", json={"name": "mynet", "dns": False})
+
+        assert resp.status_code == 409
+        record = load_db().networks["mynet"]
+        assert list(record.hosts) == ["node1"], "Duplicate create must not wipe existing hosts"
+        assert str(record.subnet) == "fd12:3456:789a:1::/64", "Duplicate create must not change the subnet"
+        assert (net_dir / "ca.crt").read_text() == "original-ca", \
+            "Duplicate create must not regenerate the CA"
+
+    def test_create_ca_is_not_invoked_on_duplicate(self, api, server_dir, monkeypatch):
+        seed_network(server_dir, name="mynet")
+        calls = []
+        monkeypatch.setattr("cep.server.network.create_ca", lambda *a, **kw: calls.append((a, kw)))
+
+        resp = api.post("/network/create", json={"name": "mynet", "dns": False})
+
+        assert resp.status_code == 409
+        assert calls == [], "create_ca must not run when the network already exists"
+
+    def test_returns_409_for_orphan_data_dir(self, api, server_dir):
+        orphan = server_dir / "orphannet"
+        orphan.mkdir()
+        (orphan / "ca.crt").write_text("leftover-ca")
+
+        resp = api.post("/network/create", json={"name": "orphannet", "dns": False})
+
+        assert resp.status_code == 409
+        assert "orphannet" not in load_db().networks, "Orphan-dir create must not persist a DB record"
+        assert (orphan / "ca.crt").read_text() == "leftover-ca", "Orphan dir contents must be untouched"
 
 
 class TestNetworkDelete:

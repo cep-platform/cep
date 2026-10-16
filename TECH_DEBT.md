@@ -60,11 +60,23 @@ Findings are grouped by severity. File references use `path:line`.
 > duplicate-name create — is left untouched), so `/network/list`, which
 > reads the data dir rather than the DB, cannot show a phantom network
 > without a DB record.
+>
+> Follow-up (1.3): on `bugfix/network-create-post-and-409` a pre-existing
+> data dir is rejected with 409 by the orphan guard before the CA step, so
+> the `TestNetworkCreateCaFailure` pre-existing-dir test was superseded by
+> `TestNetworkCreateDuplicate::test_returns_409_for_orphan_data_dir`.
 
-### 1.3 Network creation has no duplicate guard
+### 1.3 Network creation has no duplicate guard — ✅ RESOLVED
 - `src/cep/server/network.py:57` — creating a network whose name already
   exists silently **overwrites the DB record (wiping all hosts)** and
   regenerates the CA. Should return 409.
+
+> **Resolved** on `bugfix/network-create-post-and-409`: `create` raises
+> `HTTPException(409)` before any side effects when the name is already in
+> the DB, and also when a data dir exists without a DB record (orphan).
+> Regression tests: `tests/test_network_endpoints.py::TestNetworkCreateDuplicate`
+> (409 preserves hosts/subnet/CA, `create_ca` never invoked, orphan dir
+> rejected), plus happy-path coverage in `TestNetworkCreate`.
 
 ### 1.4 Caddy bootstrap crashes on a fresh container
 - `src/cep/apps/caddy.py:82-90` — Caddy's admin API returns JSON `null` for
@@ -91,9 +103,15 @@ Findings are grouped by severity. File references use `path:line`.
   detached lighthouse → `KeyError`. Missing/stale `runtime.json` →
   `FileNotFoundError`/`os.kill` on a dead PID. No cleanup of the file.
 
-### 1.7 `GET /network/create` mutates state
+### 1.7 `GET /network/create` mutates state — ✅ RESOLVED
 - `src/cep/server/network.py:56` (and the CLI mirrors it) — side effects
   behind GET: unsafe retries, prefetching, caching. Make it POST.
+
+> **Resolved** on `bugfix/network-create-post-and-409`: the endpoint is now
+> `POST /network/create` taking a `NetworkCreateRequest` body
+> (`cep.datamodels`), mirroring the `/host/create` pattern; the CLI posts
+> JSON accordingly and surfaces 409s without a traceback. Old GET callers
+> receive 405.
 
 ### 1.8 Fire-and-forget compose operations
 - `src/cep/apps/docker.py:129` — `compose_up` uses `subprocess.Popen` and
@@ -253,10 +271,10 @@ Current suite: 128 tests, all passing, no live server/docker/network needed
 - **No CLI ↔ server contract tests**: the CLI builds requests by hand against
   hardcoded paths; add a round-trip test per command (CliRunner → mocked
   httpx → TestClient router) so path/verb drift gets caught.
-- Would-have-caught-it tests: duplicate network create (1.3), caddy
-  `null`-config bootstrap (1.4), template validity (1.5 — lint every
-  `app_templates/*.yml` for a defined `cep` network and a sane proxy port).
-  (1.1's host-delete/sign 404 tests have since been added.)
+- Would-have-caught-it tests: caddy `null`-config bootstrap (1.4),
+  template validity (1.5 — lint every `app_templates/*.yml` for a defined
+  `cep` network and a sane proxy port). (1.1's host-delete/sign 404 tests
+  and 1.3's duplicate-create tests have since been added.)
 - Auth behavior itself is untested: token set → 401 on bad/missing token;
   token unset → warn/refuse (2.1).
 - No test exercises `uvicorn`-level serving, `connect`/`disconnect`, or the
@@ -266,7 +284,7 @@ Current suite: 128 tests, all passing, no live server/docker/network needed
 
 ## 6. Suggested priority
 
-1. **Correctness**: 1.3, 1.4, 1.5 (+ template lint test). (1.1 done.)
+1. **Correctness**: 1.4, 1.5 (+ template lint test). (1.1, 1.3, 1.7 done.)
 2. **Security**: fail-closed auth (2.1), verify nebula downloads (2.2),
    tighten firewall default (2.3).
 3. **State**: atomic/locked db writes + deploy compensation (§3).
