@@ -8,6 +8,8 @@ Covers:
 - load_db when DB file exists → correct NetworkStore reconstructed
 - save_db writes JSON that load_db can re-read exactly
 - save_db overwrites; subsequent load_db sees the new state
+- AppRecord roundtrips (ip serializer/deserializer) through the DB
+- Pre-feature db.json files without an "apps" key still load
 """
 from __future__ import annotations
 
@@ -17,7 +19,7 @@ from pathlib import Path
 
 import pytest
 
-from cep.datamodels import HostRecord, NetworkRecord, NetworkStore
+from cep.datamodels import AppRecord, HostRecord, NetworkRecord, NetworkStore
 from cep.server.utils import load_db, save_db
 
 
@@ -106,3 +108,55 @@ class TestSaveDb:
         final = load_db()
         assert "a" not in final.networks
         assert "b" in final.networks
+
+
+class TestAppRecordPersistence:
+    def test_reconstructs_app_records(self, server_dir):
+        net = NetworkRecord(
+            name="mynet",
+            subnet=ipaddress.IPv6Network("fd00::/64"),
+            hosts={},
+            apps={"redis": AppRecord(name="redis", ip=ipaddress.ip_address("fd00::1"))},
+            dns=False,
+        )
+        db_path = server_dir / "db.json"
+        db_path.write_text(json.dumps(NetworkStore(networks={"mynet": net}).model_dump()))
+
+        store = load_db()
+
+        redis_record = store.networks["mynet"].apps["redis"]
+        assert isinstance(redis_record, AppRecord)
+        assert redis_record.name == "redis"
+        assert redis_record.ip == ipaddress.ip_address("fd00::1")
+
+    def test_app_record_ip_survives_dump_roundtrip(self):
+        app = AppRecord(name="redis", ip=ipaddress.ip_address("fd00::1"))
+
+        dumped = app.model_dump()
+        restored = AppRecord.model_validate(dumped)
+
+        assert isinstance(dumped["ip"], str)
+        assert dumped["ip"] == "fd00::1"
+        assert restored.ip == app.ip
+
+    def test_apps_default_to_empty_when_missing_from_db(self, server_dir):
+        """db.json files written before the apps field existed must still load."""
+        db_path = server_dir / "db.json"
+        db_path.write_text(
+            json.dumps(
+                {
+                    "networks": {
+                        "mynet": {
+                            "name": "mynet",
+                            "subnet": "fd00::/64",
+                            "hosts": {},
+                            "dns": False,
+                        }
+                    }
+                }
+            )
+        )
+
+        store = load_db()
+
+        assert store.networks["mynet"].apps == {}

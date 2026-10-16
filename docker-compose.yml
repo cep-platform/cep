@@ -1,5 +1,23 @@
 services:
 
+  caddy:
+    image: caddy:2
+    container_name: cep-caddy
+    networks: 
+      - cep
+    restart: unless-stopped
+    environment:
+      CADDY_ADMIN: "0.0.0.0:2019"
+    ports:
+      - "8080:80"
+      - "8443:443"
+      - "8443:443/udp"
+    volumes:
+      # - ./conf:/etc/caddy
+      # - ./site:/srv
+      - caddy_data:/data
+      - caddy_config:/config
+
   cep-dns:
     build:
       context: ./unbound
@@ -33,6 +51,7 @@ services:
     depends_on:
       - cep-main
     volumes:
+      - ./.env:/app/.env:ro
       # dev
       - ./src:/app/src
 
@@ -52,6 +71,7 @@ services:
       DNS_IP: "${DNS_IP}"
       DNS_TOKEN: "${DNS_TOKEN}"
     volumes:
+      - ./.env:/app/.env:ro
       # dev
       - ./src:/app/src
 
@@ -66,6 +86,7 @@ services:
     environment:
       CEP_STORAGE_PATH: "${CEP_STORAGE_PATH:-/var/lib/cep/storage}"
     volumes:
+      - ./.env:/app/.env:ro
       - /var/run/docker.sock:/var/run/docker.sock
       - ${CEP_STORAGE_PATH:-/var/lib/cep/storage}:${CEP_STORAGE_PATH:-/var/lib/cep/storage}
       - ./src:/app/src
@@ -78,4 +99,5 @@ networks:
 
 volumes:
   unbound-state:
-
+  caddy_data:
+  caddy_config:

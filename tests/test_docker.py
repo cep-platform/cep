@@ -18,12 +18,13 @@ update_deployment_file:
 from __future__ import annotations
 
 import logging
+from importlib import resources
 from pathlib import Path
 
 import pytest
 import yaml
 
-from cep.apps.docker import ComposeConfig, Docker
+from cep.apps.docker import PROXY_PORT_LABEL, ComposeConfig, Docker
 
 
 # ---------------------------------------------------------------------------
@@ -115,3 +116,56 @@ class TestUpdateDeploymentFile:
         # File must still be intact
         result = ComposeConfig.load(deployment_path)
         assert "nginx" in result.services
+
+
+# ---------------------------------------------------------------------------
+# App templates: x-cep proxy data moved to per-service labels
+# ---------------------------------------------------------------------------
+
+def load_raw_template(name: str) -> dict:
+    with resources.as_file(
+        resources.files("cep.apps.app_templates").joinpath(f"{name}.yml")
+    ) as path:
+        return yaml.safe_load(Path(path).read_text())
+
+
+class TestAppTemplateLabels:
+    def test_templates_load_ootb_into_compose_config(self):
+        assert Docker.list_available_apps()
+
+        for name in Docker.list_available_apps():
+            config = Docker.get_app_template(name)
+            assert config.services, f"{name} has no services"
+
+    def test_x_cep_extension_removed_from_templates(self):
+        for name in Docker.list_available_apps():
+            assert "x-cep" not in load_raw_template(name)
+
+    def test_proxy_port_label_on_every_service(self):
+        for name in Docker.list_available_apps():
+            config = Docker.get_app_template(name)
+            for service, service_config in config.services.items():
+                labels = service_config.get("labels")
+                assert labels is not None, f"{name}/{service} has no labels"
+                port = labels.get(PROXY_PORT_LABEL)
+                assert port is not None, f"{name}/{service} missing {PROXY_PORT_LABEL}"
+                assert str(port).isdigit()
+
+    def test_container_name_on_every_service(self):
+        for name in Docker.list_available_apps():
+            config = Docker.get_app_template(name)
+            for service, service_config in config.services.items():
+                container_name = service_config.get("container_name")
+                assert container_name, f"{name}/{service} has no container_name"
+                assert container_name.startswith("cep-app-"), (
+                    f"{name}/{service} container_name must follow the "
+                    f"cep-app-<name> convention, got '{container_name}'"
+                )
+
+    def test_proxy_port_label_survives_deployment_merge(self, deployment_path: Path):
+        app_config = Docker.get_app_template("redis")
+
+        Docker.add_to_deployment_file(app_config)
+
+        result = ComposeConfig.load(deployment_path)
+        assert result.services["redis"]["labels"][PROXY_PORT_LABEL] == "6379"

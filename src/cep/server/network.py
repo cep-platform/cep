@@ -54,7 +54,7 @@ def _list() -> list[str]:
 @network_router.get("/create")
 def create(name: str, dns: bool) -> NetworkRecord:
     subnet = generate_ula_prefix()
-    network_record = NetworkRecord(name=name, subnet=subnet, hosts={}, dns=dns)
+    network_record = NetworkRecord(name=name, subnet=subnet, hosts={}, apps={}, dns=dns)
 
     network_data_dir = SERVER_DATA_DIR / network_record.name
     network_data_dir.mkdir(exist_ok=True)

@@ -33,10 +33,14 @@ _________  _____________________        _____
 
 #TODO: async loop
 @apps_app.command("deploy")
-def _deploy(name_arr: list[str]) -> str | None:
-    for name in name_arr:
-        resp = client_proxy.post("/deployProxy", params={'name': name})
-        resp.raise_for_status()
+def _deploy(app_name: str, network_name: str) -> None:
+    resp = client_proxy.post(
+            "/deployProxy",
+            params={
+                'name': app_name,
+                'network_name': network_name
+                })
+    resp.raise_for_status()
 
 
 #TODO:
@@ -79,13 +83,19 @@ def _list():
     print("Apps up: \n", resp.content)
 
 @apps_app.command()
-def targeted_destroy(name_arr: list[str]):
+def targeted_destroy(network_name: str, name_arr: list[str]):
     """
     Unlike clear, this applies compose down *ONLY* on selected apps
-    is async but time-out errors occur need to check whats up with that
+    of the given network, also removing their reverse proxy and DNS records.
+    Is async but time-out errors occur need to check whats up with that
     """
     for name in name_arr:
-        resp = client_proxy.delete("/targetedDestroyProxy", params={'name': name})
+        resp = client_proxy.delete(
+                "/targetedDestroyProxy",
+                params={
+                    'name': name,
+                    'network_name': network_name,
+                    })
         resp.raise_for_status()
 
 #TODO: async + with docker compose for all apps

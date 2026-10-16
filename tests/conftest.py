@@ -7,7 +7,9 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+from typer.testing import CliRunner
 
+from cep.apps.docker import PROXY_PORT_LABEL
 from cep.datamodels import HostRecord, NetworkRecord, NetworkStore
 
 
@@ -40,6 +42,8 @@ def mock_dns(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr("cep.server.network.stop_dns", lambda: None)
     monkeypatch.setattr("cep.server.host.add_host_to_dns", lambda *a, **kw: None)
     monkeypatch.setattr("cep.server.host.remove_host_from_dns", lambda *a, **kw: None)
+    monkeypatch.setattr("cep.server.apps.add_host_to_dns", lambda *a, **kw: None)
+    monkeypatch.setattr("cep.server.apps.remove_host_from_dns", lambda *a, **kw: None)
 
 
 @pytest.fixture()
@@ -77,6 +81,105 @@ def api(server_dir, mock_dns, mock_create_ca, monkeypatch) -> TestClient:
     app.include_router(storage.storage_router)
 
     return TestClient(app)
+
+
+# ---------------------------------------------------------------------------
+# CLI runner
+# ---------------------------------------------------------------------------
+
+@pytest.fixture()
+def cli_runner() -> CliRunner:
+    """Typer CliRunner for invoking CLI commands in tests."""
+    return CliRunner()
+
+
+# ---------------------------------------------------------------------------
+# Appstore + reverse proxy stubs for the /apps router
+# ---------------------------------------------------------------------------
+
+class FakeAppstoreResponse:
+    """Minimal stand-in for an httpx.Response returned by the appstore."""
+
+    def __init__(self, status_code: int = 200, json_data: dict | None = None):
+        self.status_code = status_code
+        self._json = json_data if json_data is not None else {}
+        self.content = json.dumps(self._json).encode()
+        self.headers = {}
+
+    @property
+    def is_error(self) -> bool:
+        return self.status_code >= 400
+
+    def json(self) -> dict:
+        return self._json
+
+
+class FakeAppstoreClient:
+    """Configurable stand-in for the appstore httpx client in cep.server.apps."""
+
+    def __init__(self):
+        self.deploy_response = FakeAppstoreResponse(
+            json_data={
+                "services": {
+                    "redis": {
+                        "container_name": "cep-app-redis",
+                        "labels": {PROXY_PORT_LABEL: "6379"},
+                    }
+                }
+            }
+        )
+        self.destroy_response = FakeAppstoreResponse()
+        self.deploy_error = None
+        self.destroy_error = None
+        self.deploy_calls: list[tuple] = []
+        self.destroy_calls: list[tuple] = []
+
+    def post(self, path: str, params: dict | None = None) -> FakeAppstoreResponse:
+        self.deploy_calls.append((path, params))
+        if self.deploy_error is not None:
+            raise self.deploy_error
+        return self.deploy_response
+
+    def delete(self, path: str, params: dict | None = None) -> FakeAppstoreResponse:
+        self.destroy_calls.append((path, params))
+        if self.destroy_error is not None:
+            raise self.destroy_error
+        return self.destroy_response
+
+
+@pytest.fixture()
+def mock_appstore(monkeypatch: pytest.MonkeyPatch) -> FakeAppstoreClient:
+    """Route all appstore calls made by the /apps router to a local stub."""
+    stub = FakeAppstoreClient()
+    monkeypatch.setattr("cep.server.apps.client", stub)
+    return stub
+
+
+class RproxyRecorder:
+    """Records reverse proxy calls made by the /apps router."""
+
+    def __init__(self):
+        self.added: list[tuple[str, str]] = []
+        self.removed: list[str] = []
+        self.error = None
+
+    def add_rproxy(self, hostname: str, destination: str) -> None:
+        if self.error is not None:
+            raise self.error
+        self.added.append((hostname, destination))
+
+    def remove_rproxy(self, hostname: str) -> None:
+        if self.error is not None:
+            raise self.error
+        self.removed.append(hostname)
+
+
+@pytest.fixture()
+def mock_rproxy(monkeypatch: pytest.MonkeyPatch) -> RproxyRecorder:
+    """Replace the reverse proxy used by the /apps router with a recorder."""
+    recorder = RproxyRecorder()
+    monkeypatch.setattr("cep.server.apps.CaddyReverseProxy", recorder)
+    return recorder
 
 
 # ---------------------------------------------------------------------------

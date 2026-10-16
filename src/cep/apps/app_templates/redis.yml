@@ -1,7 +1,11 @@
 services:
   redis:
+    networks: 
+      - cep
     image: redis:7-alpine
-    container_name: my-redis
+    container_name: cep-app-redis
+    labels:
+      cep.proxy.port: "6379"
     ports:
       - "6379:6379"
     volumes:

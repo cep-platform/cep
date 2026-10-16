@@ -1,7 +1,11 @@
 services:
   python-app:
+    networks: 
+      - cep
     image: python:3.11-slim
-    container_name: my-python-app
+    container_name: cep-app-python
+    labels:
+      cep.proxy.port: "8069"
     volumes:
       - ./app:/app
     working_dir: /app

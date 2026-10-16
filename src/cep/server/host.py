@@ -54,13 +54,13 @@ def create(request: HostRequest) -> HostRecord:
             public_ip=request.public_ip,
             )
 
+    network_record.hosts[request.name] = host_record
+    save_db(network_store)
+
     if request.add_dns_record:
         domain_name = f"{request.name}.{network_record.name}"
         aaaa_request = AddAAAARequest(name=domain_name, ip=str(ip))
         add_host_to_dns(aaaa_request)
-
-    network_record.hosts[request.name] = host_record
-    save_db(network_store)
 
     return host_record
 

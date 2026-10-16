@@ -20,6 +20,8 @@ APP_STORE_DATA_DIR.mkdir(exist_ok=True)
 
 APP_TEMPLATES_PATH = "cep.apps.app_templates"
 
+PROXY_PORT_LABEL = "cep.proxy.port"
+
 DEPLOYMENT_DIR = APP_STORE_DATA_DIR / "docker_deployment"
 DEPLOYMENT_DIR.mkdir(exist_ok=True)
 DEPLOYMENT_PATH = DEPLOYMENT_DIR / "compose.yml"
