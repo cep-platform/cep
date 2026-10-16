@@ -72,6 +72,7 @@ services:
       DNS_TOKEN: "${DNS_TOKEN}"
     volumes:
       - ./.env:/app/.env:ro
+      - cep-server-state:/root/.local/share/cep
       # dev
       - ./src:/app/src
 
@@ -98,3 +99,4 @@ volumes:
   unbound-state:
   caddy_data:
   caddy_config:
+  cep-server-state:

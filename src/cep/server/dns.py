@@ -5,7 +5,7 @@ import httpx
 from fastapi import APIRouter, Response, HTTPException, Body, Depends
 
 from cep.datamodels import AddAAAARequest, NetworkStore
-from cep.server.utils import get_network_store
+from cep.server.db import get_network_store
 
 dns_router = APIRouter(prefix="/dns")
 

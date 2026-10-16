@@ -16,3 +16,8 @@ wheels/
 
 # Coverage artifacts
 .coverage
+
+# SQLite state stores (dev machines)
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm

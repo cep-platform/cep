@@ -25,10 +25,15 @@ def server_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
     """
     sdir = tmp_path / "server"
     sdir.mkdir()
-    db_path = sdir / "db.json"
 
+    # Tests don't assert durability, and transactional semantics are
+    # identical with fsyncs disabled; this keeps the suite fast even on
+    # filesystems with slow fsyncs (close-time WAL checkpoints).
+    monkeypatch.setenv("CEP_SQLITE_SYNC", "OFF")
+
+    # cep.server.db resolves the sqlite path from SERVER_DATA_DIR at
+    # call time, so no DB_PATH patch is needed.
     monkeypatch.setattr("cep.server.utils.SERVER_DATA_DIR", sdir)
-    monkeypatch.setattr("cep.server.utils.DB_PATH", db_path)
     monkeypatch.setattr("cep.server.network.SERVER_DATA_DIR", sdir)
     monkeypatch.setattr("cep.server.host.SERVER_DATA_DIR", sdir)
 
@@ -187,7 +192,7 @@ def mock_rproxy(monkeypatch: pytest.MonkeyPatch) -> RproxyRecorder:
 
 def seed_network(server_dir: Path, *, name: str = "testnet", dns: bool = False) -> NetworkRecord:
     """Write a network (no hosts) directly into the DB and create its dir."""
-    from cep.server.utils import load_db, save_db
+    from cep.server.db import load_db, save_db
 
     net = NetworkRecord(
         name=name,

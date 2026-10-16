@@ -53,7 +53,11 @@ src/cep/
                  register in cli/main.py.
   server/        cep-main FastAPI app. main.py builds app with bearer-token
                  auth; routers: network, host, apps, dns.
-                 Persistence is a JSON file (db.json) in the user data dir.
+                 Persistence is SQLite (db.sqlite3, WAL) in the user data
+                 dir; owned by server/db.py: mutating endpoints run in a
+                 BEGIN IMMEDIATE transaction per request via
+                 get_network_store_write, read endpoints snapshot via
+                 get_network_store.
   apps/          cep-appstore FastAPI app (Docker deploy + store router).
   datamodels.py  Shared Pydantic models (NetworkRecord, HostRecord, ...).
                  Validators/serializers keep ipaddress types JSON-safe.
@@ -70,9 +74,9 @@ startupscripts/  Client container entrypoints.
 - Tests must run without a live server, Docker daemon, network access, or
   nebula binaries — mock HTTP (TestClient), subprocesses, and DNS calls.
 - Shared fixtures live in `tests/conftest.py` (`server_dir` isolates
-  SERVER_DATA_DIR/DB_PATH to a tmp dir; `mock_dns`; `mock_create_ca`;
-  TestClient + CliRunner). Reuse them instead of re-patching globals;
-  extend conftest for new shared state.
+  SERVER_DATA_DIR to a tmp dir and sets CEP_SQLITE_SYNC=OFF;
+  `mock_dns`; `mock_create_ca`; TestClient + CliRunner). Reuse them
+  instead of re-patching globals; extend conftest for new shared state.
 - Server tests run token-free: `CEP_SERVER_TOKEN` must not leak into the
   test environment.
 - Behavior changes need tests in the matching test file.
@@ -96,12 +100,24 @@ startupscripts/  Client container entrypoints.
 | DNS_TOKEN            | main / dns         | DNS API auth             |
 | LIGHTHOUSE_STABLE_IP | client / server    | Public IP of lighthouse  |
 | DNS_IP               | main               | DNS server IP            |
+| CEP_SQLITE_SYNC      | main               | SQLite `synchronous` pragma
+                                          (OFF/NORMAL/FULL, default NORMAL;
+                                          the WAL conversion of a fresh db
+                                          fsyncs once, so keep the order in
+                                          `db._new_connection()` if touched) |
 
 ## Gotchas
 
 - `src/cep/utils.py` creates DATA_DIR/CACHE_DIR at import time — never
   patch those globals in tests; monkeypatch module-level paths like
   conftest.py does.
+- `src/cep/server/db.py` resolves the sqlite path from
+  `cep.server.utils.SERVER_DATA_DIR` **at call time** (not import time) so
+  the conftest monkeypatch works; keep that lazy resolution. Connections
+  are pooled — always pair `acquire_connection` with `release_connection`.
+- `PRAGMA synchronous` must be set **before** `PRAGMA journal_mode=WAL`
+  in `db._new_connection()`: switching a fresh db to WAL fsyncs under the
+  then-current sync level.
 - App templates live in `src/cep/apps/app_templates/` and are looked up
   via importlib.resources as `cep.apps.app_templates` (see
   `cep.apps.docker`); nebula/bundle templates live in `src/cep/templates/`

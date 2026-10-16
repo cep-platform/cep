@@ -178,10 +178,10 @@ Findings are grouped by severity. File references use `path:line`.
 
 ## 3. State management & consistency
 
-- **db.json is a single JSON file with no locking and non-atomic writes**
-  (`src/cep/server/utils.py:29-39`). Concurrent requests interleave
-  load→mutate→save and lose updates; a crash mid-write corrupts the whole
-  store. Write to temp + `os.replace`, and add a lock (or move to SQLite).
+- **db.json is a single JSON file with no locking and non-atomic writes** —
+  ✅ RESOLVED (moved to SQLite: `src/cep/server/db.py`, WAL mode, one
+  `BEGIN IMMEDIATE` transaction per mutating request via
+  `get_network_store_write`)
 - **Partial-failure divergence in deploy/destroy**
   (`src/cep/server/apps/__init__.py`): appstore deploy succeeds, then the
   caddy update fails → app runs but is not tracked in `network_record.apps`,

@@ -13,10 +13,11 @@ from cep.datamodels import (
         NetworkRecord,
         NetworkStore,
         )
-from cep.server.utils import (
-        SERVER_DATA_DIR,
-        save_db,
+from cep.server.utils import SERVER_DATA_DIR
+from cep.server.db import (
         get_network_store,
+        get_network_store_write,
+        DB_FILENAME,
         )
 
 from cep.server.dns import (
@@ -56,11 +57,20 @@ def create_ca(name: str, ca_dir: Path) -> Path:
 
 @network_router.get("/list")
 def _list() -> list[str]:
-    return [path.name for path in SERVER_DATA_DIR.glob('*') if path.name != 'db.json']
+    # db.sqlite3-wal / db.sqlite3-shm are WAL sidecar files of the state DB.
+    state_files = {
+            DB_FILENAME,
+            f'{DB_FILENAME}-wal',
+            f'{DB_FILENAME}-shm',
+            }
+    return [
+            path.name for path in SERVER_DATA_DIR.glob('*')
+            if path.name not in state_files
+            ]
 
 
 @network_router.post("/create")
-def create(request: NetworkCreateRequest, network_store: NetworkStore = Depends(get_network_store)) -> NetworkRecord:
+def create(request: NetworkCreateRequest, network_store: NetworkStore = Depends(get_network_store_write)) -> NetworkRecord:
     if request.name in network_store.networks:
         raise HTTPException(
                 status_code=409,
@@ -96,7 +106,8 @@ def create(request: NetworkCreateRequest, network_store: NetworkStore = Depends(
         raise
 
     network_store.networks[network_record.name] = network_record
-    save_db(network_store)
+    # No explicit save: the request's write transaction persists and
+    # commits on success (see get_network_store_write).
 
     if request.dns:
         start_dns(subnet=str(subnet))
@@ -105,7 +116,7 @@ def create(request: NetworkCreateRequest, network_store: NetworkStore = Depends(
 
 #TODO: test_this (DONE!!): make sure network_record deletion is tested
 @network_router.delete("/delete")
-def delete(name: str, network_store: NetworkStore = Depends(get_network_store)):
+def delete(name: str, network_store: NetworkStore = Depends(get_network_store_write)):
     network_data_dir = SERVER_DATA_DIR / name
     if not network_data_dir.exists():
         raise HTTPException(status_code=404, detail="Network data not found")
@@ -121,7 +132,6 @@ def delete(name: str, network_store: NetworkStore = Depends(get_network_store)):
         stop_dns()
 
     del network_store.networks[name]
-    save_db(network_store)
 
     
 
