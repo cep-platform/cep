@@ -9,7 +9,7 @@ from cep.apps.caddy import CaddyReverseProxy
 from cep.apps.store import store_router
 
 CADDY_INIT_ATTEMPTS = 3
-CADDY_INIT_RETRY_DELAY = 5.0
+CADDY_INIT_RETRY_DELAY = 9.0
 
 
 def _init_caddy_with_retry() -> None:

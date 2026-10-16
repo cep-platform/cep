@@ -22,6 +22,7 @@ import requests
 from cep.apps.caddy import (
     CADDY_ADMIN_URL,
     CADDY_SERVER_NAME,
+    CaddyInitOutcome,
     CaddyReverseProxy,
 )
 
@@ -188,14 +189,14 @@ class TestEnsureInitialized:
         recorder = _RequestsRecorder(get_response=_FakeResponse(json_data=_base_config()))
         monkeypatch.setattr("cep.apps.caddy.requests", recorder)
 
-        assert CaddyReverseProxy.ensure_initialized() is False
+        assert CaddyReverseProxy.ensure_initialized() is CaddyInitOutcome.ALREADY_INITIALIZED
         assert recorder.posts == []
 
     def test_writes_when_config_empty(self, monkeypatch):
         recorder = _RequestsRecorder(get_response=_FakeResponse(json_data={}))
         monkeypatch.setattr("cep.apps.caddy.requests", recorder)
 
-        assert CaddyReverseProxy.ensure_initialized() is True
+        assert CaddyReverseProxy.ensure_initialized() is CaddyInitOutcome.WROTE_CONFIG
         assert len(recorder.posts) == 1
 
     def test_writes_when_config_is_null(self, monkeypatch):
@@ -217,14 +218,14 @@ class TestEnsureInitialized:
         recorder = _RequestsRecorder(get_response=_FakeResponse(json_data=config))
         monkeypatch.setattr("cep.apps.caddy.requests", recorder)
 
-        assert CaddyReverseProxy.ensure_initialized() is True
+        assert CaddyReverseProxy.ensure_initialized() is CaddyInitOutcome.WROTE_CONFIG
         assert len(recorder.posts) == 1
 
     def test_writes_when_config_get_errors(self, monkeypatch):
         recorder = _RequestsRecorder(get_response=_FakeResponse(status_code=404))
         monkeypatch.setattr("cep.apps.caddy.requests", recorder)
 
-        assert CaddyReverseProxy.ensure_initialized() is True
+        assert CaddyReverseProxy.ensure_initialized() is CaddyInitOutcome.WROTE_CONFIG
         assert len(recorder.posts) == 1
 
     def test_raises_when_caddy_unreachable(self, monkeypatch):
