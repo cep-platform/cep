@@ -1,11 +1,11 @@
 import os
 
-from typing import Optional
 from fastapi import APIRouter, Depends, Response
 import httpx
 from fastapi.exceptions import HTTPException
 import requests
 
+from cep.apps.main import AppInstallRequest
 from cep.apps.caddy import CaddyReverseProxy
 from cep.apps.docker import PROXY_PORT_LABEL
 from cep.datamodels import AppRecord, AddAAAARequest, NetworkStore
@@ -45,7 +45,10 @@ def _deployed_service(resp: httpx.Response, name: str) -> dict:
 
 
 @apps_router.post("/deployProxy")
-def deploy(name: str, network_name: str, network_store: NetworkStore = Depends(get_network_store_write)):
+def deploy(name: str,
+           network_name: str,
+           network_store: NetworkStore = Depends(get_network_store_write),
+           ):
     network_record = network_store.networks.get(network_name)
 
     if not network_record:
@@ -72,7 +75,7 @@ def deploy(name: str, network_name: str, network_store: NetworkStore = Depends(g
     host_name = f"{name}.{cep.name}.{network_name}"
 
     try:
-        resp = client.post("/deploy", params={"name": name})
+        resp = client.post("/", params=AppInstallRequest(id=name))
     except httpx.HTTPError as e:
         raise HTTPException(
                 status_code=502,
@@ -121,19 +124,10 @@ def deploy(name: str, network_name: str, network_store: NetworkStore = Depends(g
         headers=resp.headers,
     )
 
-@apps_router.get("/debugUpProxy")
-def _debug_up_proxy(name: str):
-    resp = client.get("/debugUp", params={"name": name})
-
-    return Response(
-        content=resp.content,
-        status_code=resp.status_code,
-        headers=resp.headers,
-    )
 
 @apps_router.get("/listUpProxy")
 def _list_up_proxy():
-    resp = client.get("list")
+    resp = client.get("")
 
     return Response(
             content=resp.content,
@@ -141,9 +135,14 @@ def _list_up_proxy():
             headers=resp.headers,
         )
 
-#NOTE: still gets time outs despite async def debug later
+
+# NOTE: still gets time outs despite async def debug later
 @apps_router.delete("/targetedDestroyProxy")
-async def _targeted_destroy_proxy(name: str, network_name: str, network_store: NetworkStore = Depends(get_network_store_write)):
+async def _targeted_destroy_proxy(
+        name: str,
+        network_name: str,
+        network_store: NetworkStore = Depends(get_network_store_write),
+        ):
     network_record = network_store.networks.get(network_name)
 
     if not network_record:
@@ -169,8 +168,9 @@ async def _targeted_destroy_proxy(name: str, network_name: str, network_store: N
                 )
     host_name = f"{name}.{cep.name}.{network_name}"
 
+
     try:
-        resp = client.delete("/targetedDestroy", params={"name": name})
+        resp = client.delete("/{app_id}")
     except httpx.HTTPError as e:
         raise HTTPException(
                 status_code=502,
@@ -197,16 +197,7 @@ async def _targeted_destroy_proxy(name: str, network_name: str, network_store: N
 
     del network_record.apps[name]
     return Response(
-        content=resp.content,
-        status_code=resp.status_code,
-        headers=resp.headers,
-    )
-
-@apps_router.delete("/clearProxy")
-async def _delete_proxy():
-    resp = client.delete("/clear")
-    return Response(
-        content=resp.content,
-        status_code=resp.status_code,
-        headers=resp.headers,
-    )
+            content=resp.content,
+            status_code=resp.status_code,
+            headers=resp.headers,
+            )

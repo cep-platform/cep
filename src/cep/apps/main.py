@@ -1,12 +1,15 @@
+import requests
 from contextlib import asynccontextmanager
 from time import sleep
-from fastapi import FastAPI
+from typing import Literal
 
-import requests
+from fastapi import FastAPI, Response
+from pydantic import BaseModel, Field
 
-from cep.apps.docker import Docker, ComposeConfig
+from cep.apps.incus import Incus
 from cep.apps.caddy import CaddyReverseProxy
 from cep.apps.store import store_router
+
 
 CADDY_INIT_ATTEMPTS = 3
 CADDY_INIT_RETRY_DELAY = 9.0
@@ -33,107 +36,48 @@ app = FastAPI(lifespan=lifespan)
 app.include_router(store_router)
 
 
-
-@app.get("/health")
-def health():
-    """
-    Health check endpoint.
-
-    Returns a simple static response to indicate that the service
-    is running and reachable.
-
-    Returns:
-        str: Always returns "ok" if the service is healthy.
-    """
-    return "ok"
+class AppInstallRequest(BaseModel):
+    id: str
+    config: dict[str, str] = Field(default_factory=dict)
 
 
-@app.get("/debugUp")
-def _debug_up(name: str):
-    """
-    Start a Docker service in debug mode.
-
-    Brings up the specified application or service using a debug
-    configuration. Intended for development and troubleshooting.
-
-    Args:
-        name (str): Name of the application or service to start in debug mode.
-
-    Returns:
-        Any: Result of the Docker.debug_up() operation.
-    """
-    return Docker.debug_up()
+class AppResponse(BaseModel):
+    id: str
+    desired: Literal["installed", "absent"]
+    runtime: Literal[
+        "running", "stopped", "partial", "missing", "unknown"
+    ]
+    operation: Literal["installing", "updating", "removing"] | None = None
+    config: dict[str, str]
 
 
-@app.get("/list")
-def _list() -> list[str]:
-    """
-    List currently running Docker services.
-
-    Retrieves a list of application or service names that are
-    currently up according to Docker.
-
-    Returns:
-        list[str]: List of running application or service names.
-    """
-    return Docker.list_up()
+class AppListResponse(BaseModel):
+    apps: list[AppResponse]
 
 
-@app.post("/deploy")
-def _deploy(name: str) -> ComposeConfig:
-    """
-    Deploy an application using its Docker template.
+@app.get("", response_model=AppListResponse)
+async def list_apps():
+    return Incus.list_()
 
-    Fetches the application template, adds it to the deployment
-    configuration, and brings up the Docker Compose stack.
 
-    Args:
-        name (str): Name of the application to deploy.
+@app.get("/{app_id}", response_model=AppResponse)
+async def get_app(app_id: str) -> AppResponse:
+    return Incus.info(app_id=app_id)
 
-    Side Effects:
-        - Updates the deployment file.
-        - Runs `docker compose up` (or equivalent).
-    """
-    app_template = Docker.get_app_template(name)
-    Docker.add_to_deployment_file(app_template)
-    Docker.compose_up()
+
+@app.post("", response_model=AppResponse, status_code=201)
+async def install_app(request: AppInstallRequest) -> AppResponse:
+    app_template = Incus.get_app_template(request.id)
+    Incus.add_to_deployment(request.id, app_template)
+    Incus.compose_up(request.id)
 
     return app_template
 
 
-@app.delete("/targetedDestroy")
-async def _destroy(name: str):
-    """
-    Destroy a specific deployed application or service.
-
-    Stops and removes the specified application or service. If the
-    operation succeeds, the deployment file is updated accordingly.
-
-    Args:
-        name (str): Name of the application or service to destroy.
-
-    Side Effects:
-        - Stops and removes targeted Docker resources.
-        - Updates the deployment file on success.
-    """
-    return_code = await Docker.targeted_destroy(name)
-    if return_code == 0:
-        Docker.update_deployment_file(name)
-    Docker.compose_up()
-
-
-@app.delete("/clear")
-async def _delete():
-    """
-    Destroy all deployed applications and clear deployment state.
-
-    Stops and removes all managed Docker services and clears the
-    deployment configuration file if the operation succeeds.
-
-    Side Effects:
-        - Stops and removes all Docker resources managed by this service.
-        - Clears the deployment file on success.
-    """
-    return_code = await Docker.clear()
-    if return_code == 0:
-        Docker.clear_deployment_file()
+@app.delete("/{app_id}", status_code=204)
+async def uninstall_app(
+    app_id: str,
+    remove_data: bool = False,
+) -> Response:
+    Incus.compose_down(app_id=app_id)
+    Incus.remove_from_deployment(app_id=app_id)
