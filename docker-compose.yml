@@ -1,10 +1,16 @@
 services:
-  # Explicitly build the shared Cep image before deployment:
+  # Build the shared Cep image with nix (needs no docker/podman/buildah on
+  # the host). The image cache is keyed on the image name only, so use
+  # `--build` to force a rebuild after code changes:
   # incus-compose --profile build build cep-build
   cep-build:
     image: localhost/cep:latest
     build:
       context: .
+      x-incus-compose:
+        builder: nix2container
+        args:
+          - ./nix#cep-image
     profiles:
       - build
 
@@ -51,6 +57,8 @@ services:
       - /dev/net/tun:/dev/net/tun
     image: localhost/cep:latest
     container_name: cep-client 
+    # the image ENTRYPOINT is `cep`; clear it to run the startup script instead
+    entrypoint: []
     command: >
       /app/start.sh
     environment:
@@ -71,7 +79,7 @@ services:
     image: localhost/cep:latest
     container_name: cep-main 
     command: >
-      uv run cep server run
+      server run
     ports:
       - "8000:8000"
     environment:
@@ -92,7 +100,7 @@ services:
     image: localhost/cep:latest
     container_name: cep-appstore
     command: >
-      uv run cep apps run
+      apps run
     volumes:
       - ./.env:/app/.env:ro
       - /var/run/docker.sock:/var/run/docker.sock
