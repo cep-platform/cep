@@ -6,22 +6,10 @@ ENV PATH="/root/.local/bin:${PATH}"
 
 WORKDIR /app
 
-# Install Docker CLI only (no daemon)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-        ca-certificates \
-        curl \
-        gnupg \
-        iproute2 \
-        lsb-release \
-        && rm -rf /var/lib/apt/lists/*
+    apt-get install -y --no-install-recommends incus
 
-RUN curl -fsSL https://download.docker.com/linux/debian/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg \
-    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/debian $(lsb_release -cs) stable" \
-        > /etc/apt/sources.list.d/docker.list \
-    && apt-get update \
-    && apt-get install -y docker-ce-cli \
-    && rm -rf /var/lib/apt/lists/*
+RUN incus admin init --minimal
 
 COPY ./startupscripts/start_client.sh /app/start.sh
 COPY ./startupscripts/client_banner.txt /app/client_banner.txt
