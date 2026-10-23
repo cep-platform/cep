@@ -3,17 +3,17 @@ services:
   # the host). The image cache is keyed on the image name only, so use
   # `--build` to force a rebuild after code changes:
   # incus-compose --profile build build cep-build
-  cep-build:
-    image: localhost/cep:latest
-    build:
-      context: .
-      x-incus-compose:
-        builder: nix2container
-        args:
-          - ./nix#cep-image
-    profiles:
-      - build
-
+  # cep-build:
+  #   image: localhost/cep:latest
+  #   build:
+  #     context: .
+  #     x-incus-compose:
+  #       builder: nix2container
+  #       args:
+  #         - ./nix#cep-image
+  #   profiles:
+  #     - build
+  #
   caddy:
 
     image: caddy:2
@@ -74,37 +74,45 @@ services:
 
 
   cep-main:
-    networks: 
+    networks:
       - cep
     image: localhost/cep:latest
-    container_name: cep-main 
-    command: >
-      server run
+    container_name: cep-main
+    working_dir: /app
+    entrypoint: ["/bin/bash", "/app/dev-entrypoint.sh"]
+    command: ["server", "run"]
     ports:
       - "8000:8000"
     environment:
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
       APP_STORE_HOST_NAME: "cep-appstore"
       CEP_SERVER_TOKEN: "${CEP_SERVER_TOKEN}"
       DNS_IP: "${DNS_IP}"
       DNS_TOKEN: "${DNS_TOKEN}"
     volumes:
       - ./.env:/app/.env:ro
-      # - cep-server-state:/root/.local/share/cep
-      # dev
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./uv.lock:/app/uv.lock:ro
       - ./src:/app/src
-
+      - ./startupscripts/dev-entrypoint.sh:/app/dev-entrypoint.sh:ro
+      - ./startupscripts/start_client.sh:/app/start.sh:ro
+      - ./startupscripts/client_banner.txt:/app/client_banner.txt:ro
 
   cep-appstore:
-    networks: 
+    networks:
       - cep
     image: localhost/cep:latest
     container_name: cep-appstore
-    command: >
-      apps run
+    working_dir: /app
+    entrypoint: ["/bin/bash", "/app/dev-entrypoint.sh"]
+    command: ["apps", "run"]
     volumes:
       - ./.env:/app/.env:ro
-      - /var/run/docker.sock:/var/run/docker.sock
+      - ./pyproject.toml:/app/pyproject.toml:ro
+      - ./uv.lock:/app/uv.lock:ro
       - ./src:/app/src
+      - ./startupscripts/dev-entrypoint.sh:/app/dev-entrypoint.sh:ro
 
 
 networks:
