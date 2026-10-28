@@ -7,7 +7,7 @@ import requests
 
 from cep.apps.main import AppInstallRequest
 from cep.apps.caddy import CaddyReverseProxy
-from cep.apps.docker import PROXY_PORT_LABEL
+from cep.apps.incus import PROXY_PORT_LABEL
 from cep.datamodels import AppRecord, AddAAAARequest, NetworkStore
 from cep.server.apps.store import store_router
 from cep.server.dns import add_host_to_dns, remove_host_from_dns

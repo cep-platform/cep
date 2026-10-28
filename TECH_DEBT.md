@@ -122,10 +122,10 @@ Findings are grouped by severity. File references use `path:line`.
 > receive 405.
 
 ### 1.8 Fire-and-forget compose operations
-- `src/cep/apps/docker.py:129` — `compose_up` uses `subprocess.Popen` and
+- `src/cep/apps/incus.py:129` — `compose_up` uses `subprocess.Popen` and
   never waits/checks: deploy reports success before containers exist and all
   failures are invisible.
-- `src/cep/apps/docker.py:188,204` — `targeted_destroy`/`clear` are
+- `src/cep/apps/incus.py:188,204` — `targeted_destroy`/`clear` are
   `async def` but block the event loop via `Popen.communicate()`; and
   `src/cep/apps/main.py:111-117` calls `compose_up()` + returns 200 even when
   the destroy return code is non-zero.

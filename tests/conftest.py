@@ -9,7 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 from typer.testing import CliRunner
 
-from cep.apps.docker import PROXY_PORT_LABEL
+from cep.apps.incus import PROXY_PORT_LABEL
 from cep.datamodels import HostRecord, NetworkRecord, NetworkStore
 
 

@@ -1,4 +1,5 @@
 import os
+import shutil
 import subprocess
 from importlib import resources
 from pathlib import Path
@@ -88,13 +89,19 @@ class Incus():
         app_deployment_dir = DEPLOYMENT_DIR / f"{app_id}"
         os.makedirs(app_deployment_dir, exist_ok=True)
         app_deployment_path = app_deployment_dir / f"compose.yml"
-        app_config.save(app_config)
+        app_config.save(app_deployment_path)
 
     #TODO: test_this: validate templates
     @staticmethod
     def remove_from_deployment(app_id: str):
         app_deployment_dir = DEPLOYMENT_DIR / f"{app_id}"
-        os.rmdir(app_deployment_dir)
+        try:
+            shutil.rmtree(app_deployment_dir)
+        except FileNotFoundError:
+            LOGGER.info(
+                "No deployment directory for app '%s'; nothing to remove",
+                app_id,
+            )
 
     @staticmethod
     def list_available_apps() -> list[str]:
@@ -104,7 +111,7 @@ class Incus():
 
     @staticmethod
     def compose_up(app_id):
-        deployment_path = DEPLOYMENT_DIR / Path(app_id) / Path("compose.yaml")
+        deployment_path = DEPLOYMENT_DIR / Path(app_id) / Path("compose.yml")
         subprocess.run(
                 [
                     "incus-compose",
@@ -119,7 +126,7 @@ class Incus():
 
     @staticmethod
     def compose_down(app_id):
-        deployment_path = DEPLOYMENT_DIR / Path(app_id) / Path("compose.yaml")
+        deployment_path = DEPLOYMENT_DIR / Path(app_id) / Path("compose.yml")
         subprocess.run(
                 [
                     "incus-compose",

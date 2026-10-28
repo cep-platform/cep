@@ -120,7 +120,7 @@ startupscripts/  Client container entrypoints.
   then-current sync level.
 - App templates live in `src/cep/apps/app_templates/` and are looked up
   via importlib.resources as `cep.apps.app_templates` (see
-  `cep.apps.docker`); nebula/bundle templates live in `src/cep/templates/`
+  `cep.apps.incus`); nebula/bundle templates live in `src/cep/templates/`
   (`get_template_path()`).
 - The appstore mounts `/var/run/docker.sock` — a known privilege
   escalation vector; never expose it beyond the compose file.
