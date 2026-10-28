@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from cep.apps.docker import Docker
+from cep.apps.incus import Incus
 
 store_router = APIRouter(prefix="/store")
 
@@ -12,4 +12,4 @@ def health():
 
 @store_router.get("/list")
 def _list() -> list[str]:
-    return Docker.list_available_apps()
+    return Incus.list_available_apps()

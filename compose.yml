@@ -1,104 +1,4 @@
 services:
-  # Build the shared Cep image with nix (needs no docker/podman/buildah on
-  # the host). The image cache is keyed on the image name only, so use
-  # `--build` to force a rebuild after code changes:
-  # incus-compose --profile build build cep-build
-  # cep-build:
-  #   image: localhost/cep:latest
-  #   build:
-  #     context: .
-  #     x-incus-compose:
-  #       builder: nix2container
-  #       args:
-  #         - ./nix#cep-image
-  #   profiles:
-  #     - build
-  #
-  caddy:
-
-    image: caddy:2
-    container_name: cep-caddy
-    networks: 
-      - cep
-    restart: unless-stopped
-    environment:
-      CADDY_ADMIN: "0.0.0.0:2019"
-    ports:
-      - "8080:80"
-      - "8443:443"
-      - "8443:443/udp"
-    volumes:
-      # - ./conf:/etc/caddy
-      # - ./site:/srv
-      - caddy_data:/data
-      - caddy_config:/config
-
-  cep-dns:
-    build:
-      context: ./unbound
-    network_mode: host
-    container_name: cep-dns 
-    volumes:
-      - unbound-state:/var/lib/unbound
-
-      # dev
-      - ./unbound/service/api.py:/app/api.py
-    restart: unless-stopped
-    command: uvicorn api:app --host 0.0.0.0 --port 8053
-    environment:
-      DNS_TOKEN: "${DNS_TOKEN}"
-
-
-  cep-client:
-    network_mode: host
-    cap_add:
-      - NET_ADMIN
-    devices:
-      - /dev/net/tun:/dev/net/tun
-    image: localhost/cep:latest
-    container_name: cep-client 
-    # the image ENTRYPOINT is `cep`; clear it to run the startup script instead
-    entrypoint: []
-    command: >
-      /app/start.sh
-    environment:
-      CEP_SERVER_URL: "${CEP_SERVER_URL}"
-      CEP_SERVER_TOKEN: "${CEP_SERVER_TOKEN}"
-      LIGHTHOUSE_STABLE_IP: "${LIGHTHOUSE_STABLE_IP}"
-    depends_on:
-      - cep-main
-    volumes:
-      - ./.env:/app/.env:ro
-      # dev
-      - ./src:/app/src
-
-
-  cep-main:
-    networks:
-      - cep
-    image: localhost/cep:latest
-    container_name: cep-main
-    working_dir: /app
-    entrypoint: ["/bin/bash", "/app/dev-entrypoint.sh"]
-    command: ["server", "run"]
-    ports:
-      - "8000:8000"
-    environment:
-      PYTHONDONTWRITEBYTECODE: "1"
-      PYTHONUNBUFFERED: "1"
-      APP_STORE_HOST_NAME: "cep-appstore"
-      CEP_SERVER_TOKEN: "${CEP_SERVER_TOKEN}"
-      DNS_IP: "${DNS_IP}"
-      DNS_TOKEN: "${DNS_TOKEN}"
-    volumes:
-      - ./.env:/app/.env:ro
-      - ./pyproject.toml:/app/pyproject.toml:ro
-      - ./uv.lock:/app/uv.lock:ro
-      - ./src:/app/src
-      - ./startupscripts/dev-entrypoint.sh:/app/dev-entrypoint.sh:ro
-      - ./startupscripts/start_client.sh:/app/start.sh:ro
-      - ./startupscripts/client_banner.txt:/app/client_banner.txt:ro
-
   cep-appstore:
     networks:
       - cep
@@ -106,6 +6,7 @@ services:
     container_name: cep-appstore
     working_dir: /app
     entrypoint: ["/bin/bash", "/app/dev-entrypoint.sh"]
+    # entrypoint: ["/bin/bash", "-c", "sleep infinity"]
     command: ["apps", "run"]
     volumes:
       - ./.env:/app/.env:ro
@@ -117,11 +18,3 @@ services:
 
 networks:
   cep:
-    driver: bridge
-
-
-volumes:
-  unbound-state:
-  caddy_data:
-  caddy_config:
-  # cep-server-state:
