@@ -10,9 +10,16 @@
 # source makes the working tree win. Both servers run uvicorn with reload=True
 # (cli/server.py, cli/apps/__init__.py), so edits under ./src restart the
 # workers immediately - no image rebuild, no recreate needed.
+#
+# Both servers also run with --log-level debug: uvicorn's own logs plus
+# application-level logging (e.g. the cep.server.apps deployProxy debug
+# lines), because cli/utils.py's log config wires up the root logger too.
 services:
 
   cep-main:
+    # `command` is not merged but replaced by the later file (compose-spec
+    # merge rules), so the full command is spelled out here with the flag.
+    command: ["server", "run", "--log-level", "debug"]
     volumes:
       # :ro + PYTHONDONTWRITEBYTECODE (image env) keeps uvicorn/watchfiles
       # from ever writing into the working tree.
@@ -21,6 +28,7 @@ services:
       PYTHONPATH: /app/src
 
   cep-appstore:
+    command: ["apps", "run", "--log-level", "debug"]
     volumes:
       - ./src:/app/src:ro
     environment:

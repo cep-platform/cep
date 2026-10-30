@@ -1,9 +1,11 @@
+from __future__ import annotations
+
 from typing import Optional
 import typer
 from rich import print
 import uvicorn
 
-from cep.cli.utils import get_client, parse_available
+from cep.cli.utils import get_client, parse_available, uvicorn_log_config
 from cep.cli.apps.store import store_app
 
 apps_app = typer.Typer()
@@ -13,7 +15,17 @@ client_proxy = get_client("/apps")
 
 
 @apps_app.command()
-def run():
+def run(
+    log_level: str = typer.Option(
+        "info",
+        "--log-level",
+        "-l",
+        help=(
+            "Log level for uvicorn and app logging "
+            "(critical|error|warning|info|debug|trace)."
+        ),
+    ),
+):
     ascii_banner = r"""
 _________  _____________________        _____
 \_   ___ \ \_   _____/\______   \      /  _  \  ______  ______   ______
@@ -23,11 +35,20 @@ _________  _____________________        _____
         \/         \/                        \/ |__|    |__|        \/
     """
     print(ascii_banner)
+
+    log_level = log_level.lower()
+    try:
+        log_config = uvicorn_log_config(log_level)
+    except ValueError as e:
+        raise typer.BadParameter(str(e)) from e
+
     uvicorn.run(
         "cep.apps.main:app",
         host="0.0.0.0",
         port=8080,
         reload=True,
+        log_level=log_level,
+        log_config=log_config,
     )
 
 

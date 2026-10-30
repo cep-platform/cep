@@ -114,6 +114,10 @@ class FakeAppstoreResponse:
     def is_error(self) -> bool:
         return self.status_code >= 400
 
+    @property
+    def text(self) -> str:
+        return self.content.decode()
+
     def json(self) -> dict:
         return self._json
 
@@ -122,6 +126,7 @@ class FakeAppstoreClient:
     """Configurable stand-in for the appstore httpx client in cep.server.apps."""
 
     def __init__(self):
+        self.base_url = "http://cep-appstore:8080"
         self.deploy_response = FakeAppstoreResponse(
             json_data={
                 "services": {

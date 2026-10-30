@@ -1,3 +1,6 @@
+from __future__ import annotations
+
+import logging
 import os
 
 from fastapi import APIRouter, Depends, Response
@@ -18,6 +21,8 @@ apps_router.include_router(store_router)
 
 hostname = os.environ.get("APP_STORE_HOST_NAME", "localhost")
 client = httpx.Client(base_url=f"http://{hostname}:8080")
+
+LOGGER = logging.getLogger(__name__)
 
 
 def _appstore_error(resp: httpx.Response, fallback: str) -> HTTPException:
@@ -49,6 +54,12 @@ def deploy(name: str,
            network_name: str,
            network_store: NetworkStore = Depends(get_network_store_write),
            ):
+    LOGGER.debug(
+        "deployProxy: deploying app %r on network %r (known networks: %s)",
+        name,
+        network_name,
+        ", ".join(sorted(network_store.networks)) or "<none>",
+    )
     network_record = network_store.networks.get(network_name)
 
     if not network_record:
@@ -57,7 +68,12 @@ def deploy(name: str,
                 detail=f"Network '{network_name}' not found",
                 )
 
-    print(network_record.apps)
+    LOGGER.debug(
+        "deployProxy: network %r state: apps=%s hosts=%s",
+        network_name,
+        sorted(network_record.apps),
+        sorted(network_record.hosts),
+    )
     if name in network_record.apps:
         raise HTTPException(
                 status_code=409,
@@ -75,13 +91,24 @@ def deploy(name: str,
                 )
     host_name = f"{name}.{cep.name}.{network_name}"
 
+    install_params = AppInstallRequest(id=name).model_dump()
+    LOGGER.debug(
+        "deployProxy: appstore install: POST %s params=%s",
+        client.base_url,
+        install_params,
+    )
     try:
-        resp = client.post("/", params=AppInstallRequest(id=name))
+        resp = client.post("/", params=install_params)
     except httpx.HTTPError as e:
         raise HTTPException(
                 status_code=502,
                 detail=f"Appstore unreachable while deploying '{name}': {e}",
                 )
+    LOGGER.debug(
+        "deployProxy: appstore response: HTTP %s body=%r",
+        resp.status_code,
+        resp.text,
+    )
     if resp.is_error:
         raise _appstore_error(resp, f"Appstore deploy of '{name}' failed")
 
@@ -119,6 +146,14 @@ def deploy(name: str,
 
     network_record.apps[name] = AppRecord(name=name, ip=cep.ip)
     # No explicit save: the request's write transaction commits for us.
+    LOGGER.debug(
+        "deployProxy: deployed %r in network %r (hostname=%s, backend=%s:%s)",
+        name,
+        network_name,
+        host_name,
+        container_name,
+        rproxy_port,
+    )
     return Response(
         content=resp.content,
         status_code=resp.status_code,
