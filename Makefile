@@ -1,9 +1,13 @@
 include .env
 export
 
-.PHONY: deploy up trust dns-up dns-down
+.PHONY: deploy build up trust dns-up dns-down
 
 deploy: trust
+
+# Build the nix OCI image and import it into the incus-compose cache.
+build:
+	./image/build.sh
 
 redeploy: down deploy
 

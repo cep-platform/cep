@@ -1,12 +1,12 @@
 # Cep
 
-Cep is an application for securely deploying web apps on a server. It creates and manages [Nebula](https://github.com/slackhq/nebula) peer-to-peer VPN networks and deploys Docker containers for web applications.
+Cep is an application for securely deploying web apps on a server. It creates and manages [Nebula](https://github.com/slackhq/nebula) peer-to-peer VPN networks and deploys [Incus](https://linuxcontainers.org/incus/) containers (via [incus-compose](https://github.com/lxc/incus-compose)) for web applications.
 
 ## Features
 
 - **Network Management**: Create and manage Nebula VPN networks
 - **Host Management**: Create and connect hosts to networks
-- **App Deployment**: Deploy Docker containers via the app store
+- **App Deployment**: Deploy OCI containers (Incus + incus-compose) via the app store
 - **Internal DNS**: Unbound-based internal DNS resolution
 
 ## Architecture
@@ -16,23 +16,27 @@ Cep consists of four components:
 | Component | Port | Description |
 |-----------|------|------------|
 | cep-main | 8000 | FastAPI server - network/host/DNS management |
-| cep-appstore | 8000 | FastAPI server - Docker container deployment |
+| cep-appstore | 8000 | FastAPI server - OCI container deployment via incus-compose |
 | cep-client | - | Nebula peer connecting to VPN network |
 | cep-dns | 8053 | Unbound DNS for internal resolution |
 
 ## Quick Start
 
-### Docker (Recommended)
+### Incus (Recommended)
+
+Requires a host with `nix` and `incus` (the daemon listening on
+`core.https_address :8443`; see `nix/` for the host flake):
 
 ```bash
 cp .env.example .env
 # Make sure to set LIGHTHOUSE_STABLE_IP
 
-uv sync
-uv pip install -e .
+# Build the nix OCI image (Entrypoint = cep) and import it into the
+# incus-compose image cache:
+./image/build.sh
 
-docker build . -t cep:latest
-docker compose up -d
+# Start the stack (caddy + cep-main + cep-appstore):
+make deploy
 
 uv run cep network list
 ```
@@ -48,7 +52,8 @@ uv sync
 uv run cep server run
 ```
 
-**Terminal 2** - App store (requires docker.sock):
+**Terminal 2** - App store (talks to the host incus daemon; see
+`scripts/register-appstore-client.sh` for the trust-token registration):
 ```bash
 uv sync
 uv run cep apps run
@@ -123,12 +128,12 @@ uv run cep dns remove <name>     # Remove DNS record
 A lighthouse is a host with a stable public IP that coordinates connections between hosts behind NAT. It enables UDP hole punching for peer-to-peer connectivity.
 
 - The first host in a network must be a lighthouse
-- In Docker deployment, the server itself acts as the lighthouse
+- In the incus deployment, the server itself acts as the lighthouse
 - For connectivity outside your home network, run a lighthouse on a public VPS with a stable IP
 
 ## Security Considerations
 
-- The app store requires access to the Docker socket (`/var/run/docker.sock`) - this is a known privilege escalation vector
+- The app store gets its own incus client certificate and talks to the host incus daemon over HTTPS (`scripts/register-appstore-client.sh`) - it can deploy arbitrary containers, so treat the appstore instance with the same care as a docker.sock mount
 - Token-based authentication is used between components
 - In production, isolate the app store in its own security context
 

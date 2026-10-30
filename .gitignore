@@ -22,5 +22,6 @@ wheels/
 *.sqlite3-wal
 *.sqlite3-shm
 
-# Image symlinks
-image/result
+# Image symlinks (nix multi-output builds also produce result-man etc.)
+image/result*
+nix/result

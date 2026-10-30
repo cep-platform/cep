@@ -34,12 +34,14 @@ uv run pytest tests/test_network_endpoints.py
 uv run cep --help            # CLI smoke test
 ```
 
-Docker deployment (only needed when working on deployment itself):
+Incus deployment (only needed when working on deployment itself):
 
 ```bash
 cp .env.example .env         # then set LIGHTHOUSE_STABLE_IP
-docker build . -t cep:latest
-docker compose up -d
+./image/build.sh             # build the nix OCI image, import into the
+                              # incus-compose image cache (local/cep:latest,
+                              # local/cep:latest/amd64)
+make deploy                  # incus-compose up (stack) + host-side dev extras
 ```
 
 No linter/formatter is configured yet — if you add one, document it here.
@@ -58,12 +60,22 @@ src/cep/
                  BEGIN IMMEDIATE transaction per request via
                  get_network_store_write, read endpoints snapshot via
                  get_network_store.
-  apps/          cep-appstore FastAPI app (Docker deploy + store router).
+  apps/          cep-appstore FastAPI app (incus deploy via incus-compose
+                 + store router; shells out to incus/incus-compose inside the
+                 appstore container, talking to the host daemon via a
+                 trust-token remote, scripts/register-appstore-client.sh).
   datamodels.py  Shared Pydantic models (NetworkRecord, HostRecord, ...).
                  Validators/serializers keep ipaddress types JSON-safe.
   utils.py       Nebula binary download/cache (~/.cache/nebula), platform
                  detection, template lookup, stdout parsing.
   templates/     Packaged YAML/JSON templates (nebula config, bundle).
+image/           OCI image flake: image.nix (nix2container image, Entrypoint
+                 = cep), flake.nix, build.sh (build + import into the
+                 incus-compose cache), incusify.py (OCI layout -> incus
+                 split tarballs).
+nix/             NixOS host flake (nixosConfigurations.incus: incus preseed,
+                 core.https_address :8443, firewall). Rebuild with
+                 `nixos-rebuild switch --flake ./nix#incus --impure`.
 tests/           Pytest suite (see Testing rules).
 unbound/         cep-dns: unbound config + FastAPI control API.
 startupscripts/  Client container entrypoints.
@@ -122,10 +134,22 @@ startupscripts/  Client container entrypoints.
   via importlib.resources as `cep.apps.app_templates` (see
   `cep.apps.incus`); nebula/bundle templates live in `src/cep/templates/`
   (`get_template_path()`).
-- The appstore mounts `/var/run/docker.sock` — a known privilege
-  escalation vector; never expose it beyond the compose file.
-- Nebula binaries are pre-downloaded at Docker build time; don't add
-  runtime downloads outside `download_nebula()`.
+- Image build: `image/build.sh` imports the nix-built image under
+  `local/cep:latest` AND `local/cep:latest/amd64` in the
+  `incus-compose-cache` project — incus-compose looks images up with the
+  platform suffix (`cacheAlias()`); a plain `local/cep:latest` alias alone
+  is never found. incus rejects duplicate fingerprints, so build.sh deletes
+  the previous import first.
+- The image flake uses `src = self` (the tracked git tree): `git add` new
+  files before `nix build`, or the build won't see them.
+- The appstore deploys arbitrary app templates through the host incus
+  daemon (own client cert + trust token,
+  `scripts/register-appstore-client.sh`) — the same privilege-escalation
+  surface class as a docker.sock mount; never widen the appstore's daemon
+  access beyond that registration.
+- Nebula binaries are baked into the image at build time (symlinked into
+  `~/.cache/nebula`, see `image/image.nix`); don't add runtime downloads
+  outside `download_nebula()`.
 
 ## Git conventions
 

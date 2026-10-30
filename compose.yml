@@ -3,69 +3,55 @@ services:
   caddy:
     image: caddy:2
     container_name: cep-caddy
-    networks: 
+    networks:
       - cep
     restart: unless-stopped
     environment:
       CADDY_ADMIN: "0.0.0.0:2019"
     ports:
       - "8080:80"
-      - "8443:443"
-      - "8443:443/udp"
+      - "9443:443"
+      - "9443:443/udp"
     volumes:
       # - ./conf:/etc/caddy
       # - ./site:/srv
       - caddy_data:/data
       - caddy_config:/config
 
+  # The cep image is built from nix (distroless OCI, Entrypoint = `cep`) by
+  # ./image/build.sh; `command:` supplies the entrypoint's arguments.
   cep-main:
     networks:
       - cep
     image: localhost/cep:latest
     container_name: cep-main
-    working_dir: /app
-    entrypoint: ["/bin/bash", "/app/dev-entrypoint.sh"]
     command: ["server", "run"]
     ports:
       - "8000:8000"
     environment:
-      PYTHONDONTWRITEBYTECODE: "1"
-      PYTHONUNBUFFERED: "1"
       APP_STORE_HOST_NAME: "cep-appstore"
       CEP_SERVER_TOKEN: "${CEP_SERVER_TOKEN}"
       DNS_IP: "${DNS_IP}"
       DNS_TOKEN: "${DNS_TOKEN}"
     volumes:
       - ./.env:/app/.env:ro
-      - ./pyproject.toml:/app/pyproject.toml:ro
-      - ./uv.lock:/app/uv.lock:ro
-      - ./src:/app/src
-      - ./startupscripts/dev-entrypoint.sh:/app/dev-entrypoint.sh:ro
-      - ./startupscripts/start_client.sh:/app/start.sh:ro
-      - ./startupscripts/client_banner.txt:/app/client_banner.txt:ro
+      - cep-server-state:/root/.local/share/cep
 
   cep-appstore:
     networks:
       - cep
     image: localhost/cep:latest
     container_name: cep-appstore
-    working_dir: /app
-    entrypoint: ["/bin/bash", "/app/dev-entrypoint.sh"]
     command: ["apps", "run"]
     volumes:
       - ./.env:/app/.env:ro
-      - ./pyproject.toml:/app/pyproject.toml:ro
-      - ./uv.lock:/app/uv.lock:ro
-      - ./src:/app/src
-      - ./startupscripts/dev-entrypoint.sh:/app/dev-entrypoint.sh:ro
-
+      - cep-appstore-state:/root/.local/share/cep
 
 networks:
   cep:
 
-
 volumes:
-  unbound-state:
   caddy_data:
   caddy_config:
-  # cep-server-state:
+  cep-server-state:
+  # cep-appstore-state:

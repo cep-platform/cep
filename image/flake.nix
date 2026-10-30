@@ -1,100 +1,43 @@
-
-# ENV PYTHONDONTWRITEBYTECODE=1
-# ENV PYTHONUNBUFFERED=1
-# ENV PATH="/root/.local/bin:${PATH}"
-
-# WORKDIR /app
-
-# COPY ./startupscripts/start_client.sh /app/start.sh
-# COPY ./startupscripts/client_banner.txt /app/client_banner.txt
-
-# Copy dependency files first (for caching)
-# COPY pyproject.toml ./
-# RUN uv sync
-
-# Copy source code
-# COPY src/ src/
-# RUN uv pip install -e .
-
-# Pre-download nebula binaries and set execute permissions at build time (otherwuise cross platform bugs)
-# RUN uv run python -c "from cep.utils import download_nebula; download_nebula()"
-
-# CMD ["uv", "run", "cep", "server", "run"]
-
 {
-  description = "Cep container";
+  description = "Cep OCI image, built with nix2container (no Docker daemon needed)";
 
+  # nixos-26.05 carries python313 and the deps cep needs (see image.nix).
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-26.05";
 
-  outputs = { self, nixpkgs }:
+  # The image builder. The canonical home is nlewo/nix2container
+  # (github:nix-community/nix2container does not exist).
+  inputs.nix2container.url = "github:nlewo/nix2container";
+
+  outputs = { self, nixpkgs, nix2container }:
     let
       system = "x86_64-linux";
+      pkgs = nixpkgs.legacyPackages.${system};
+      nix2container-pkgs = nix2container.packages.${system};
+      # nix >= 2.28 makes a flake in a git subdirectory see only its
+      # subtree as `self`; the repo root (pyproject.toml, src/,
+      # startupscripts/) is its parent directory in the store tree.
+      repoRoot = dirOf self.outPath;
+      cepImage = import ./image.nix {
+        inherit pkgs repoRoot;
+        nix2container = nix2container-pkgs.nix2container;
+      };
     in {
-      nixosConfigurations.appstore = nixpkgs.lib.nixosSystem {
-        inherit system;
+      packages.${system} = {
+        # The image descriptor (image.json + streamed layers).
+        # Consumers:
+        #   - image/build.sh materializes it and imports it into Incus
+        #   - `nix run ./image#cep-image.copyTo -- <skopeo-dest>` pushes it to
+        #     any registry/skopeo target
+        cep-image = cepImage.image;
 
-        modules = [
-          "${nixpkgs}/nixos/modules/virtualisation/lxc-container.nix"
+        # The plain cep application (Python env from nixpkgs) - smoke-test
+        # target:
+        #   nix build ./image#cep && ./result/bin/cep --help
+        cep = cepImage.cep;
 
-          ({ pkgs, ... }: {
-            system.stateVersion = "26.05";
-
-            networking.hostName = "cep";
-            networking.nftables.enable = true;
-
-            environment.systemPackages = with pkgs; [
-              incus
-              curl
-              python3
-              uv
-            ];
-
-            virtualisation.incus.enable = true;
-            virtualisation.incus.preseed = {
-              networks = [
-                {
-                  config = {
-                    "ipv4.address" = "10.0.200.1/24";
-                    "ipv4.nat" = "true";
-                  };
-                  name = "incusbr0";
-                  type = "bridge";
-                }
-              ];
-              profiles = [
-                {
-                  config = {
-                    security.privileged = true;
-                  };
-                  devices = {
-                    eth0 = {
-                      name = "eth0";
-                      network = "incusbr0";
-                      type = "nic";
-                    };
-                    root = {
-                      path = "/";
-                      pool = "default";
-                      size = "35GiB";
-                      type = "disk";
-                    };
-                  };
-                  name = "default";
-                }
-              ];
-              storage_pools = [
-                {
-                  config = {
-                    source = "/var/lib/incus/storage-pools/default";
-                  };
-                  driver = "dir";
-                  name = "default";
-                }
-              ];
-            };
-          })
-        ];
+        # skopeo with the nix: transport, used by image/build.sh to
+        # materialize the image as an OCI layout.
+        skopeo-nix2container = nix2container-pkgs.skopeo-nix2container;
       };
     };
 }
-
