@@ -54,4 +54,4 @@ volumes:
   caddy_data:
   caddy_config:
   cep-server-state:
-  # cep-appstore-state:
+  cep-appstore-state:
