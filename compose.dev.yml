@@ -1,0 +1,27 @@
+# Dev overlay for compose.yml - used by `make dev`:
+#   incus-compose -f compose.yml -f compose.dev.yml up -d --no-healthd
+#
+# incus-compose does not auto-discover this file; `make dev` passes it
+# explicitly (and plain `make up`/`make down` keep using compose.yml only).
+#
+# The image's Python env imports `cep` from /nix/store, which would shadow a
+# bind mount - but the nix wrapper leaves PYTHONPATH alone (dependencies come
+# from the env interpreter's own path), so pointing PYTHONPATH at the mounted
+# source makes the working tree win. Both servers run uvicorn with reload=True
+# (cli/server.py, cli/apps/__init__.py), so edits under ./src restart the
+# workers immediately - no image rebuild, no recreate needed.
+services:
+
+  cep-main:
+    volumes:
+      # :ro + PYTHONDONTWRITEBYTECODE (image env) keeps uvicorn/watchfiles
+      # from ever writing into the working tree.
+      - ./src:/app/src:ro
+    environment:
+      PYTHONPATH: /app/src
+
+  cep-appstore:
+    volumes:
+      - ./src:/app/src:ro
+    environment:
+      PYTHONPATH: /app/src

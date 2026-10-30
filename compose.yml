@@ -12,11 +12,11 @@ services:
       - "8080:80"
       - "9443:443"
       - "9443:443/udp"
-    volumes:
+    # volumes:
       # - ./conf:/etc/caddy
       # - ./site:/srv
-      - caddy_data:/data
-      - caddy_config:/config
+      # - caddy_data:/data
+      # - caddy_config:/config
 
   # The cep image is built from nix (distroless OCI, Entrypoint = `cep`) by
   # ./image/build.sh; `command:` supplies the entrypoint's arguments.
@@ -34,8 +34,8 @@ services:
       DNS_IP: "${DNS_IP}"
       DNS_TOKEN: "${DNS_TOKEN}"
     volumes:
-      - ./.env:/app/.env:ro
-      - cep-server-state:/root/.local/share/cep
+      - ./.env:/app/.env:ro # tf? 
+      # - cep-server-state:/root/.local/share/cep
 
   cep-appstore:
     networks:
@@ -45,13 +45,13 @@ services:
     command: ["apps", "run"]
     volumes:
       - ./.env:/app/.env:ro
-      - cep-appstore-state:/root/.local/share/cep
+      # - cep-appstore-state:/root/.local/share/cep
 
 networks:
   cep:
 
-volumes:
-  caddy_data:
-  caddy_config:
-  cep-server-state:
-  cep-appstore-state:
+# volumes:
+#   caddy_data:
+#   caddy_config:
+#   cep-server-state:
+#   cep-appstore-state:

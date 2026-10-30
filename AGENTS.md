@@ -42,6 +42,9 @@ cp .env.example .env         # then set LIGHTHOUSE_STABLE_IP
                               # incus-compose image cache (local/cep:latest,
                               # local/cep:latest/amd64)
 make deploy                  # incus-compose up (stack) + host-side dev extras
+make dev                     # same as deploy, but with the live-reload
+                              # overlay (compose.dev.yml: ./src bind-mounted,
+                              # PYTHONPATH overrides the baked package)
 ```
 
 No linter/formatter is configured yet — if you add one, document it here.
