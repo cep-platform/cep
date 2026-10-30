@@ -92,7 +92,9 @@ class TestDeployProxy:
         )
 
         assert resp.status_code == 200
-        assert mock_appstore.deploy_calls == [("/deploy", {"name": "redis"})]
+        assert mock_appstore.deploy_calls == [
+            ("/", None, {"id": "redis", "config": {}})
+        ]
         assert resp.json()["services"]["redis"]["container_name"] == "cep-app-redis"
         assert mock_rproxy.added == [("redis.cep.testnet", "cep-app-redis:6379")], (
             "dial target must be container_name:proxy_port from the template"
@@ -260,9 +262,7 @@ class TestTargetedDestroyProxy:
         )
 
         assert resp.status_code == 200
-        assert mock_appstore.destroy_calls == [
-            ("/targetedDestroy", {"name": "redis"})
-        ]
+        assert mock_appstore.destroy_calls == [("/redis", None)]
         assert mock_rproxy.removed == ["redis.cep.testnet"]
         assert dns_calls == ["redis.cep.testnet"]
         assert "redis" not in load_db().networks["testnet"].apps

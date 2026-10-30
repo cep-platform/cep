@@ -143,8 +143,13 @@ class FakeAppstoreClient:
         self.deploy_calls: list[tuple] = []
         self.destroy_calls: list[tuple] = []
 
-    def post(self, path: str, params: dict | None = None) -> FakeAppstoreResponse:
-        self.deploy_calls.append((path, params))
+    def post(
+        self,
+        path: str,
+        params: dict | None = None,
+        json: dict | None = None,
+    ) -> FakeAppstoreResponse:
+        self.deploy_calls.append((path, params, json))
         if self.deploy_error is not None:
             raise self.deploy_error
         return self.deploy_response

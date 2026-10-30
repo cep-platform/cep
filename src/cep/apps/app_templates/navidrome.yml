@@ -21,5 +21,3 @@ volumes:
     
 networks:
   cep:
-    external: true
-    name: cep_cep

@@ -1,12 +1,13 @@
+from __future__ import annotations
+
 import requests
 from contextlib import asynccontextmanager
 from time import sleep
-from typing import Literal
 
-from fastapi import FastAPI, Response
+from fastapi import FastAPI, HTTPException, Response
 from pydantic import BaseModel, Field
 
-from cep.apps.incus import Incus
+from cep.apps.incus import ComposeConfig, Incus
 from cep.apps.caddy import CaddyReverseProxy
 from cep.apps.store import store_router
 
@@ -41,33 +42,24 @@ class AppInstallRequest(BaseModel):
     config: dict[str, str] = Field(default_factory=dict)
 
 
-class AppResponse(BaseModel):
-    id: str
-    desired: Literal["installed", "absent"]
-    runtime: Literal[
-        "running", "stopped", "partial", "missing", "unknown"
-    ]
-    operation: Literal["installing", "updating", "removing"] | None = None
-    config: dict[str, str]
-
-
-class AppListResponse(BaseModel):
-    apps: list[AppResponse]
-
-
-@app.get("", response_model=AppListResponse)
+@app.get("/")
 async def list_apps():
     return Incus.list_()
 
 
-@app.get("/{app_id}", response_model=AppResponse)
-async def get_app(app_id: str) -> AppResponse:
+@app.get("/{app_id}")
+async def get_app(app_id: str):
     return Incus.info(app_id=app_id)
 
 
-@app.post("", response_model=AppResponse, status_code=201)
-async def install_app(request: AppInstallRequest) -> AppResponse:
-    app_template = Incus.get_app_template(request.id)
+@app.post("/", response_model=ComposeConfig, status_code=201)
+async def install_app(request: AppInstallRequest) -> ComposeConfig:
+    try:
+        app_template = Incus.get_app_template(request.id)
+    except ValueError as e:
+        # get_app_template's message names the template dir and lists the
+        # available apps; surface it as an actionable 404, not a 500.
+        raise HTTPException(status_code=404, detail=str(e))
     Incus.add_to_deployment(request.id, app_template)
     Incus.compose_up(request.id)
 
@@ -81,3 +73,4 @@ async def uninstall_app(
 ) -> Response:
     Incus.compose_down(app_id=app_id)
     Incus.remove_from_deployment(app_id=app_id)
+    return Response(status_code=204)

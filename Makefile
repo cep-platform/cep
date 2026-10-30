@@ -35,7 +35,7 @@ dev-trust: dev-up
 
 # Host-side dev extras that live outside incus-compose (cep-dns + client init).
 host-extras:
-	$(MAKE) dns-up
+	# $(MAKE) dns-up
 	$(MAKE) client-init
 
 client-init:
@@ -60,3 +60,4 @@ dns-down:
 
 down: dns-down
 	incus-compose down
+	pkill nebula

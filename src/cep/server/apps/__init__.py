@@ -93,12 +93,12 @@ def deploy(name: str,
 
     install_params = AppInstallRequest(id=name).model_dump()
     LOGGER.debug(
-        "deployProxy: appstore install: POST %s params=%s",
+        "deployProxy: appstore install: POST %s body=%s",
         client.base_url,
         install_params,
     )
     try:
-        resp = client.post("/", params=install_params)
+        resp = client.post("/", json=install_params)
     except httpx.HTTPError as e:
         raise HTTPException(
                 status_code=502,
@@ -163,7 +163,7 @@ def deploy(name: str,
 
 @apps_router.get("/listUpProxy")
 def _list_up_proxy():
-    resp = client.get("")
+    resp = client.get("/")
 
     return Response(
             content=resp.content,
@@ -206,7 +206,7 @@ async def _targeted_destroy_proxy(
 
 
     try:
-        resp = client.delete("/{app_id}")
+        resp = client.delete(f"/{name}")
     except httpx.HTTPError as e:
         raise HTTPException(
                 status_code=502,

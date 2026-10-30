@@ -95,6 +95,23 @@ let
       pkgs.findutils
       pkgs.gnugrep
       pkgs.gnused
+
+    # Lightweight development and debugging tools
+      pkgs.curl
+      pkgs.wget
+      pkgs.bind # dig, nslookup, host
+      pkgs.iputils # ping, arping
+      pkgs.netcat-openbsd # nc
+      pkgs.tcpdump
+      pkgs.procps # ps, top, free, uptime
+      pkgs.util-linux # lsblk, mount, dmesg, nsenter
+      pkgs.file
+      pkgs.which
+      pkgs.less
+      pkgs.jq
+      pkgs.lsof
+      pkgs.strace
+      pkgs.gnupg
     ];
     pathsToLink = [ "/bin" ];
   };
