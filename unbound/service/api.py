@@ -71,23 +71,23 @@ def write_records(path: Path, config: dict[str, str]):
 
 
 def instantiate_main_app():
-    server_token = os.environ.get("DNS_TOKEN", "")
-    if server_token:
-        def verify_token(
-            credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
-        ):
-            token = credentials.credentials
-
-            if token != server_token:
-                raise HTTPException(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
-                    detail="Invalid or missing token",
-                )
-        return FastAPI(
-                dependencies=[Depends(verify_token)]
-                )
-    else:
-        return FastAPI()
+    # server_token = os.environ.get("DNS_TOKEN", "")
+    # if server_token:
+    #     def verify_token(
+    #         credentials: HTTPAuthorizationCredentials = Depends(HTTPBearer()),
+    #     ):
+    #         token = credentials.credentials
+    #
+    #         if token != server_token:
+    #             raise HTTPException(
+    #                 status_code=status.HTTP_401_UNAUTHORIZED,
+    #                 detail="Invalid or missing token",
+    #             )
+    #     return FastAPI(
+    #             dependencies=[Depends(verify_token)]
+    #             )
+    # else:
+    return FastAPI()
 
 
 app = instantiate_main_app()

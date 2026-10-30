@@ -12,11 +12,5 @@ ls "$ROOTFS"
 incus image import \
   "$META"/tarball/*.tar.xz \
   "$ROOTFS"/*.squashfs \
-  --alias cep
-
-incus image list
-incus launch cep $1 \
-  --config security.nesting=true
-
-incus exec cep -- curl --version
-incus exec cep -- incus version
+  --project incus-compose-cache \
+  --alias local/cep:latest

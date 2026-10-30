@@ -12,15 +12,15 @@ dns_router = APIRouter(prefix="/dns")
 hostname = os.environ.get("DNS_IP", "localhost")
 dns_token = os.environ.get("DNS_TOKEN", None)
 base_url = f"http://{hostname}:8053"
-if dns_token:
-    client = httpx.Client(
-                    base_url=base_url,
-                    headers={
-                        "Authorization": f"Bearer {dns_token}",
-                        },
-                    )
-else:
-    client = httpx.Client(base_url=base_url)
+# if dns_token:
+#     client = httpx.Client(
+#                     base_url=base_url,
+#                     headers={
+#                         "Authorization": f"Bearer {dns_token}",
+#                         },
+#                     )
+# else:
+client = httpx.Client(base_url=base_url)
 
 
 def start_dns(subnet: str):

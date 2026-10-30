@@ -57,6 +57,7 @@ def deploy(name: str,
                 detail=f"Network '{network_name}' not found",
                 )
 
+    print(network_record.apps)
     if name in network_record.apps:
         raise HTTPException(
                 status_code=409,
