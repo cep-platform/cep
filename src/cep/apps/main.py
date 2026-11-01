@@ -42,7 +42,8 @@ class AppInstallRequest(BaseModel):
     config: dict[str, str] = Field(default_factory=dict)
 
 
-# Liveness probe for the incus-compose healthcheck (compose.yml)
+# Liveness probe for the incus-compose healthcheck (compose.yml).
+@app.get("/health")
 async def health() -> dict[str, str]:
     return {"status": "ok"}
 
