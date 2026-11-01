@@ -5,8 +5,7 @@ export
 
 deploy: trust
 
-# Development equivalent of deploy: same shape (up + host-side extras +
-# appstore trust registration), but against the live-reload overlay.
+# Development equivalent of deploy with live-reload overlay.
 dev: dev-trust
 
 # Build the nix OCI image and import it into the incus-compose cache.
@@ -22,16 +21,12 @@ trust: up
 
 up:
 	cat startupscripts/client_banner.txt
-	incus-compose up -d --no-healthd
+	incus-compose up -d
 	$(MAKE) host-extras
 
-# Bare live-reload stack: overlays compose.dev.yml, which bind-mounts ./src
-# and points PYTHONPATH at it so the nix-baked interpreter imports the
-# working tree (uvicorn reload=True does the rest). `make dev` is the full
-# equivalent of `make deploy` (this + host extras + trust).
 dev-up:
 	cat startupscripts/client_banner.txt
-	incus-compose -f compose.yml -f compose.dev.yml up -d --no-healthd
+	incus-compose -f compose.yml -f compose.dev.yml up -d
 	$(MAKE) host-extras
 
 dev-trust: dev-up
@@ -39,7 +34,7 @@ dev-trust: dev-up
 
 # Host-side dev extras that live outside incus-compose (cep-dns + client init).
 host-extras:
-	# $(MAKE) dns-up
+	$(MAKE) dns-up
 	$(MAKE) client-init
 
 client-init:

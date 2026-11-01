@@ -72,6 +72,7 @@ class FakeIncus:
         return self.listed
 
     def info(self, app_id):
+        self.calls.append(f"info:{app_id}")
         return self.info_data
 
 
@@ -152,3 +153,20 @@ class TestUninstallApp:
             "compose_down:redis",
             "remove_from_deployment:redis",
         ]
+
+
+class TestHealth:
+    def test_health_returns_ok_without_touching_incus(self, client, fake_incus):
+        """compose.yml's healthcheck probes /health from inside the container
+        during `incus-compose up` - before the incus trust registration - so
+        it must answer without shelling out to incus.
+
+        Also a regression guard for the route ordering: /health is registered
+        above the /{app_id} catch-all; if it ever moves below, this request
+        would be served by get_app("health") instead.
+        """
+        resp = client.get("/health")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
+        assert fake_incus.calls == []

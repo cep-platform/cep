@@ -12,6 +12,12 @@ services:
       - "8080:80"
       - "9443:443"
       - "9443:443/udp"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:80/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     # volumes:
       # - ./conf:/etc/caddy
       # - ./site:/srv
@@ -28,6 +34,15 @@ services:
     command: ["server", "run"]
     ports:
       - "8000:8000"
+    depends_on:
+      cep-appstore:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     environment:
       APP_STORE_HOST_NAME: "cep-appstore"
       CEP_SERVER_TOKEN: "${CEP_SERVER_TOKEN}"
@@ -43,6 +58,12 @@ services:
     image: localhost/cep:latest
     container_name: cep-appstore
     command: ["apps", "run"]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
     volumes:
       - ./.env:/app/.env:ro
       # - cep-appstore-state:/root/.local/share/cep

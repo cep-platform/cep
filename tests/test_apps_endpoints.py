@@ -358,3 +358,18 @@ class TestTargetedDestroyProxy:
         assert resp.status_code == 502
         assert dns_calls == []
         assert "redis" in load_db().networks["testnet"].apps
+
+
+# ---------------------------------------------------------------------------
+# /health
+# ---------------------------------------------------------------------------
+
+class TestHealth:
+    def test_health_returns_ok(self, api, server_dir):
+        """compose.yml's healthcheck probes /health from inside the
+        container; a 200 is what lets `incus-compose up` (healthd enabled)
+        consider cep-main started and detach."""
+        resp = api.get("/health")
+
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}
