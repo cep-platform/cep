@@ -115,6 +115,7 @@ startupscripts/  Client container entrypoints.
 | DNS_TOKEN            | main / dns         | DNS API auth             |
 | LIGHTHOUSE_STABLE_IP | client / server    | Public IP of lighthouse  |
 | DNS_IP               | main               | DNS server IP            |
+| INCUS_COMPOSE_HEALTHD_INCUS | make (incus-compose) | https URL the ic-healthd sidecar uses to reach the incus daemon; required because core.https_address is ":8443" (all interfaces) and make talks to the daemon over the unix socket, so incus-compose cannot auto-derive a dial target. Default: the preseeded incusbr0 address, https://10.0.100.1:8443 (nix/modules/incus.nix; port 8443 is open in nix/modules/networking.nix). Without it, healthd creation fails and `up` aborts. |
 | CEP_SQLITE_SYNC      | main               | SQLite `synchronous` pragma
                                           (OFF/NORMAL/FULL, default NORMAL;
                                           the WAL conversion of a fresh db
