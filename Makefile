@@ -13,12 +13,15 @@ dev: dev-trust
 build:
 	./image/build.sh
 
+logs:
+	incus-compose logs --follow
 redeploy: down deploy
 
 trust: up
 	scripts/register-appstore-client.sh
 
 up:
+	cat startupscripts/client_banner.txt
 	incus-compose up -d --no-healthd
 	$(MAKE) host-extras
 
@@ -27,6 +30,7 @@ up:
 # working tree (uvicorn reload=True does the rest). `make dev` is the full
 # equivalent of `make deploy` (this + host extras + trust).
 dev-up:
+	cat startupscripts/client_banner.txt
 	incus-compose -f compose.yml -f compose.dev.yml up -d --no-healthd
 	$(MAKE) host-extras
 

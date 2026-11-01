@@ -9,8 +9,6 @@ else
   CEP="uv run cep"
 fi
 
-cat "$(dirname "$0")/client_banner.txt"
-
 sleep 5
 
 # Wait until the main server is reachable
