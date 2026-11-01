@@ -127,20 +127,32 @@ class FakeAppstoreClient:
 
     def __init__(self):
         self.base_url = "http://cep-appstore:8080"
+        # POST / now returns 202 + job id; the template arrives via the
+        # job body below (GET /jobs/{job_id}).
         self.deploy_response = FakeAppstoreResponse(
+            status_code=202,
+            json_data={"job_id": "job-1", "status": "running"},
+        )
+        self.job_response = FakeAppstoreResponse(
             json_data={
-                "services": {
-                    "redis": {
-                        "container_name": "cep-app-redis",
-                        "labels": {PROXY_PORT_LABEL: "6379"},
+                "id": "job-1",
+                "state": "done",
+                "result": {
+                    "services": {
+                        "redis": {
+                            "container_name": "cep-app-redis",
+                            "labels": {PROXY_PORT_LABEL: "6379"},
+                        }
                     }
-                }
+                },
             }
         )
         self.destroy_response = FakeAppstoreResponse()
         self.deploy_error = None
+        self.job_error = None
         self.destroy_error = None
         self.deploy_calls: list[tuple] = []
+        self.poll_calls: list[tuple] = []
         self.destroy_calls: list[tuple] = []
 
     def post(
@@ -153,6 +165,12 @@ class FakeAppstoreClient:
         if self.deploy_error is not None:
             raise self.deploy_error
         return self.deploy_response
+
+    def get(self, path: str, params: dict | None = None) -> FakeAppstoreResponse:
+        self.poll_calls.append((path, params))
+        if self.job_error is not None:
+            raise self.job_error
+        return self.job_response
 
     def delete(self, path: str, params: dict | None = None) -> FakeAppstoreResponse:
         self.destroy_calls.append((path, params))

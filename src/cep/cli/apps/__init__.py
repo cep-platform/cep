@@ -13,6 +13,10 @@ apps_app.add_typer(store_app, name="store")
 
 client_proxy = get_client("/apps")
 
+# A bit above cep.server.apps.DEPLOY_POLL_TIMEOUT (600s) so the server's
+# own actionable 504 beats the client's read timeout (see that module).
+DEPLOY_TIMEOUT = 660.0
+
 
 @apps_app.command()
 def run(
@@ -55,12 +59,18 @@ _________  _____________________        _____
 #TODO: async loop
 @apps_app.command("deploy")
 def _deploy(app_name: str, network_name: str) -> None:
+    print(
+        f"Deploying [green]{app_name}[/green] on network "
+        f"[green]{network_name}[/green] - this can take a few minutes"
+    )
     resp = client_proxy.post(
             "/deployProxy",
             params={
                 'name': app_name,
                 'network_name': network_name
-                })
+                },
+            timeout=DEPLOY_TIMEOUT,
+            )
     resp.raise_for_status()
 
 

@@ -4,13 +4,18 @@ Tests for the appstore app's own HTTP API (cep.apps.main).
 These pin the contract that cep-main's /apps proxy consumes
 (src/cep/server/apps/__init__.py):
 
-- POST / with an AppInstallRequest JSON body installs the app and returns
-  the template (services with container_name/labels) - 201
-- POST / with an unknown template id 404s with an actionable detail
-  (template dir + available apps)
+- POST / with an AppInstallRequest JSON body accepts the install job
+  and returns 202 + job_id; the template (services with
+  container_name/labels) arrives via the job's result
+- GET /jobs/{job_id} reports the job state; done carries the template,
+  failed carries the error. 404 for an unknown job id
+- POST / with an unknown template id 404s synchronously with an
+  actionable detail (template dir + available apps) and never creates
+  a job
 - GET / lists deployed apps (raw incus JSON passthrough)
 - GET /{app_id} returns app info
-- DELETE /{app_id} tears the app down - 204
+- DELETE /{app_id} tears the app down - 204 (still synchronous; the job
+  pattern is only wired into install for now)
 
 Regression: these routes were previously registered with an empty path
 ("@app.post('')"), which matches no URL - every call came back
@@ -26,7 +31,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from cep.apps.incus import ComposeConfig, Incus
-from cep.apps.main import app as appstore_app
+from cep.apps.main import JOBS, app as appstore_app
 
 REDIS_TEMPLATE = ComposeConfig(
     services={
@@ -45,6 +50,7 @@ class FakeIncus:
         self.template = REDIS_TEMPLATE
         self.listed = [{"name": "cep-app-redis", "status": "Running"}]
         self.info_data = [{"name": "cep-app-redis", "status": "Running"}]
+        self.compose_up_error: Exception | None = None
         self.calls: list[str] = []
 
     def get_app_template(self, name):
@@ -64,6 +70,8 @@ class FakeIncus:
 
     def compose_up(self, app_id):
         self.calls.append(f"compose_up:{app_id}")
+        if self.compose_up_error is not None:
+            raise self.compose_up_error
 
     def compose_down(self, app_id):
         self.calls.append(f"compose_down:{app_id}")
@@ -94,18 +102,31 @@ def fake_incus(monkeypatch: pytest.MonkeyPatch) -> FakeIncus:
 
 @pytest.fixture()
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
-    """Appstore TestClient with caddy bootstrap (lifespan) stubbed."""
+    """Appstore TestClient with caddy bootstrap (lifespan) stubbed and the
+    in-memory job registry cleared between tests."""
     monkeypatch.setattr("cep.apps.main._init_caddy_with_retry", lambda: None)
+    JOBS.clear()
     return TestClient(appstore_app)
 
 
 class TestInstallApp:
-    def test_post_root_installs_and_returns_template(self, client, fake_incus):
-        """The deploy proxy posts to '/' and reads services from the body."""
+    def test_post_root_accepts_job_and_completes_it(self, client, fake_incus):
+        """POST / returns 202 + job_id immediately; the job body carries
+        the template once done. TestClient runs background tasks to
+        completion before returning, so the job is already done here -
+        in production the 202 leaves long before the deploy finishes."""
         resp = client.post("/", json={"id": "redis", "config": {}})
 
-        assert resp.status_code == 201
-        assert resp.json()["services"]["redis"]["container_name"] == (
+        assert resp.status_code == 202
+        body = resp.json()
+        assert body["status"] == "running"
+
+        job = client.get(f"/jobs/{body['job_id']}")
+        assert job.status_code == 200
+        job_body = job.json()
+        assert job_body["state"] == "done"
+        assert job_body["error"] is None
+        assert job_body["result"]["services"]["redis"]["container_name"] == (
             "cep-app-redis"
         )
         assert fake_incus.calls == [
@@ -117,6 +138,7 @@ class TestInstallApp:
     def test_post_root_with_unknown_app_404s_with_available_apps(
         self, client, fake_incus
     ):
+        """Unknown apps fail fast and synchronously: no job is created."""
         fake_incus.template = None
 
         resp = client.post("/", json={"id": "mongo", "config": {}})
@@ -125,6 +147,38 @@ class TestInstallApp:
         assert "not found" in resp.json()["detail"]
         assert "redis" in resp.json()["detail"], "detail must list available apps"
         assert fake_incus.calls == ["get_app_template:mongo"]
+        assert JOBS == {}, "a rejected install must not leave a job behind"
+
+
+class TestInstallJob:
+    def test_compose_up_failure_marks_job_failed(self, client, fake_incus):
+        """The background task must never raise: failures land in the job
+        so pollers see them (a raised task would take down the worker)."""
+        fake_incus.compose_up_error = RuntimeError(
+            "incus-compose up failed: no space left on device"
+        )
+
+        resp = client.post("/", json={"id": "redis", "config": {}})
+
+        assert resp.status_code == 202
+        job = client.get(f"/jobs/{resp.json()['job_id']}")
+        assert job.status_code == 200
+        job_body = job.json()
+        assert job_body["state"] == "failed"
+        assert "no space left on device" in job_body["error"]
+        assert job_body["result"] is None
+        assert fake_incus.calls == [
+            "get_app_template:redis",
+            "add_to_deployment:redis",
+            "compose_up:redis",  # recorded before the error raised
+        ]
+
+    def test_get_unknown_job_404s(self, client, fake_incus):
+        resp = client.get("/jobs/does-not-exist")
+
+        assert resp.status_code == 404
+        assert "does-not-exist" in resp.json()["detail"]
+        assert fake_incus.calls == []
 
 
 class TestListApp:

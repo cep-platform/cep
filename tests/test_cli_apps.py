@@ -3,6 +3,7 @@ Tests for the apps CLI commands.
 
 deploy:
 - Forwards app name and network name to /apps/deployProxy
+- Uses a long per-request timeout (deploys poll for minutes server-side)
 - Fails on non-2xx responses (raise_for_status)
 
 run:
@@ -41,12 +42,14 @@ class _FakeResponse:
 
 class _FakeProxyClient:
     def __init__(self):
-        self.posts: list[tuple[str, dict]] = []
+        self.posts: list[tuple[str, dict, float | None]] = []
         self.deletes: list[tuple[str, dict]] = []
         self.response = _FakeResponse()
 
-    def post(self, path: str, params: dict | None = None) -> _FakeResponse:
-        self.posts.append((path, params))
+    def post(
+        self, path: str, params: dict | None = None, timeout: float | None = None
+    ) -> _FakeResponse:
+        self.posts.append((path, params, timeout))
         return self.response
 
     def delete(self, path: str, params: dict | None = None) -> _FakeResponse:
@@ -62,13 +65,24 @@ def fake_proxy_client(monkeypatch: pytest.MonkeyPatch) -> _FakeProxyClient:
 
 
 class TestDeployCommand:
-    def test_forwards_app_and_network_names(self, cli_runner, fake_proxy_client):
+    def test_forwards_app_and_network_names_with_long_timeout(
+        self, cli_runner, fake_proxy_client
+    ):
+        from cep.cli.apps import DEPLOY_TIMEOUT
+
         result = cli_runner.invoke(apps_app, ["deploy", "redis", "testnet"])
 
         assert result.exit_code == 0, result.output
         assert fake_proxy_client.posts == [
-            ("/deployProxy", {"name": "redis", "network_name": "testnet"})
-        ]
+            (
+                "/deployProxy",
+                {"name": "redis", "network_name": "testnet"},
+                DEPLOY_TIMEOUT,
+            )
+        ], (
+            "deploys poll the appstore job for minutes server-side; the CLI's "
+            "default 5s read timeout would abort every deploy"
+        )
 
     def test_fails_on_non_2xx_response(self, cli_runner, fake_proxy_client):
         fake_proxy_client.response = _FakeResponse(status_code=409)

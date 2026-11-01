@@ -186,7 +186,15 @@ Findings are grouped by severity. File references use `path:line`.
   (`src/cep/server/apps/__init__.py`): appstore deploy succeeds, then the
   caddy update fails → app runs but is not tracked in `network_record.apps`,
   no compensation/rollback. Same for destroy. Needs transactional steps or
-  reconciliation.
+  reconciliation. (Narrowed for deploy on `feature/switch-to-incus`: the
+  appstore install is now an async job that cep-main polls to `done` before
+  wiring caddy/DNS/DB, so the appstore leg can no longer diverge silently.)
+- **Appstore install jobs are in-memory only** (`src/cep/apps/main.py`):
+  `JOBS` is a process-local dict with no pruning — an appstore restart
+  forgets running jobs (pollers then get 404) and finished ones. The
+  deploy itself lives in incus, so only observability is lost, but a
+  restart mid-deploy leaves the app deployed with nothing tracking the
+  job. Persist/limit jobs once deploys outlive single-process memory.
 - **`/network/list` reads the data directory, not the DB**
   (`src/cep/server/network.py:51`) — the two can diverge (dir deleted but
   record kept and vice versa). `network delete` also `rmtree`s *before*
