@@ -14,3 +14,11 @@ services:
     #   - ./nginx.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped
 
+networks:
+  # The stack's shared bridge (name pinned in compose.yml). caddy dials
+  # deployed apps by instance name, so they must join this exact network.
+  # external: app deployments never create or delete it.
+  cep:
+    name: cep
+    external: true
+

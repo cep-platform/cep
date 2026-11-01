@@ -70,6 +70,11 @@ services:
 
 networks:
   cep:
+    # Pinned concrete incus network name. incus-compose otherwise derives
+    # "<project>-cep" from the checkout dir name, and app templates join
+    # this network as external by this exact name
+    # (src/cep/apps/app_templates/*.yml; guarded by tests/test_incus.py).
+    name: cep
 
 # volumes:
 #   caddy_data:

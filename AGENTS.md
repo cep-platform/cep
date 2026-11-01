@@ -138,6 +138,14 @@ startupscripts/  Client container entrypoints.
   via importlib.resources as `cep.apps.app_templates` (see
   `cep.apps.incus`); nebula/bundle templates live in `src/cep/templates/`
   (`get_template_path()`).
+- App templates must join the stack's shared bridge as an *external*
+  network: `networks: {cep: {name: cep, external: true}}`, with the same
+  name pinned in compose.yml. caddy routes dial `<container_name>:<proxy
+  port>` by instance-name DNS, which only works on the shared bridge — a
+  non-external network silently gives every app its own isolated
+  `<project>-cep` bridge (the appstore deploys each app as its own incus
+  project) and caddy answers 502. `tests/test_incus.py`
+  (`TestAppTemplateSharedNetwork`) guards this contract.
 - Image build: `image/build.sh` imports the nix-built image under
   `local/cep:latest` AND `local/cep:latest/amd64` in the
   `incus-compose-cache` project — incus-compose looks images up with the

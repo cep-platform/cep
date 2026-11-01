@@ -169,3 +169,63 @@ class TestAppTemplateLabels:
 
         result = ComposeConfig.load(deployment_dir / "redis" / "compose.yml")
         assert result.services["redis"]["labels"][PROXY_PORT_LABEL] == "6379"
+
+
+# ---------------------------------------------------------------------------
+# App templates: shared reverse-proxy network
+# ---------------------------------------------------------------------------
+
+class TestAppTemplateSharedNetwork:
+    """
+    Deployed apps must sit on the stack's shared bridge network:
+    caddy's reverse-proxy routes dial `<container_name>:<proxy port>` by
+    instance-name DNS, which only resolves between instances attached to
+    the same incus bridge.
+
+    A plain (non-external) network definition used to give every app its
+    own isolated per-project bridge (incus-compose creates
+    `<project>-<network>` per compose project, and the appstore deploys
+    each app as its own project) - caddy could then never resolve the
+    app and answered 502 (dial tcp: lookup ...: i/o timeout).
+
+    The shared network is created once by the stack (compose.yml pins
+    `networks.cep.name = cep`) and referenced by app templates as
+    `external`, so app deployments attach to it without ever creating or
+    deleting it.
+    """
+
+    def test_services_join_the_shared_network(self):
+        for name in Incus.list_available_apps():
+            config = Incus.get_app_template(name)
+            for service, service_config in config.services.items():
+                assert "cep" in (service_config.get("networks") or []), (
+                    f"{name}/{service} must join the shared 'cep' network"
+                )
+
+    def test_shared_network_is_external_and_pinned(self):
+        for name in Incus.list_available_apps():
+            config = Incus.get_app_template(name)
+            net = (config.networks or {}).get("cep")
+            assert net is not None, (
+                f"{name} must declare the shared 'cep' network"
+            )
+            assert net.get("external") is True, (
+                f"{name}: 'cep' must be external:true - otherwise "
+                "incus-compose creates an isolated <project>-cep bridge "
+                "per app and caddy cannot reach the deployed app"
+            )
+            assert net.get("name") == "cep", (
+                f"{name}: 'cep' must pin name:cep to match the stack's "
+                "network in compose.yml"
+            )
+
+    def test_external_network_survives_deployment(self, deployment_dir: Path):
+        """The external flag must reach the file incus-compose runs."""
+        app_config = Incus.get_app_template("navidrome")
+
+        Incus.add_to_deployment("navidrome", app_config)
+
+        result = ComposeConfig.load(
+            deployment_dir / "navidrome" / "compose.yml"
+        )
+        assert result.networks["cep"] == {"name": "cep", "external": True}
