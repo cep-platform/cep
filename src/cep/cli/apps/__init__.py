@@ -1,15 +1,21 @@
-from typing import Optional
-import typer
-from rich import print
-import uvicorn
+from typing import Annotated, Optional
 
-from cep.cli.utils import get_client, parse_available
+import httpx
+import typer
+import uvicorn
+from rich import print
+
+from cep.apps.spec import DeployRequest, InvalidSpec, parse_env, parse_mount, parse_port
 from cep.cli.apps.store import store_app
+from cep.cli.utils import get_client
+
+APP_OP_TIMEOUT = 600  # seconds; deploy blocks until the image is pulled
 
 apps_app = typer.Typer()
 apps_app.add_typer(store_app, name="store")
 
 client_proxy = get_client("/apps")
+client_proxy.timeout = httpx.Timeout(5, read=APP_OP_TIMEOUT)
 
 
 @apps_app.command()
@@ -31,68 +37,76 @@ _________  _____________________        _____
     )
 
 
-#TODO: async loop
+def build_deploy_request(
+    target: str,
+    name: str | None,
+    port: list[str],
+    env: list[str],
+    volume: list[str],
+    privileged: bool,
+) -> DeployRequest:
+    """Flags left empty stay None, so they don't override a preset."""
+    return DeployRequest(
+        target=target,
+        name=name,
+        ports=[parse_port(p) for p in port] or None,
+        env=dict(parse_env(e) for e in env) or None,
+        mounts=[parse_mount(v) for v in volume] or None,
+        privileged=privileged or None,
+    )
+
+
+def _check(resp: httpx.Response) -> None:
+    if resp.is_success:
+        return
+    try:
+        detail = resp.json().get("detail", resp.text)
+    except ValueError:
+        detail = resp.text
+    print(f"[red]Error {resp.status_code}:[/red] {detail}")
+    raise typer.Exit(1)
+
+
 @apps_app.command("deploy")
-def _deploy(name_arr: list[str]) -> str | None:
-    for name in name_arr:
-        resp = client_proxy.post("/deployProxy", params={'name': name})
-        resp.raise_for_status()
+def _deploy(
+    target: Annotated[str, typer.Argument(help="Preset name or image ref, e.g. redis or ghcr.io/foo/bar:1.0")],
+    name: Annotated[Optional[str], typer.Option(help="App name (default: derived from the image)")] = None,
+    port: Annotated[list[str], typer.Option(help="HOST:CONTAINER[/udp], repeatable")] = [],
+    env: Annotated[list[str], typer.Option(help="KEY=VALUE, repeatable")] = [],
+    volume: Annotated[list[str], typer.Option(help="SOURCE:TARGET[:ro], repeatable")] = [],
+    privileged: Annotated[bool, typer.Option(help="Run the container privileged")] = False,
+):
+    """Deploy a preset or any OCI image."""
+    try:
+        req = build_deploy_request(target, name, port, env, volume, privileged)
+    except InvalidSpec as e:
+        print(f"[red]{e}[/red]")
+        raise typer.Exit(1)
+    resp = client_proxy.post("/deployProxy", json=req.model_dump(exclude_none=True))
+    _check(resp)
+    print(f"Deployed {resp.json()['name']}")
 
-
-#TODO:
-# - Debug == True runs ps needs to be parsed in some logging system
-# - List up != list-available
-#   - list available: what has been white-listed for your network
-#   - list up: which of these "whitelisted" and deployed apps in the past are still up
-#      - returns array of up apps where |up| <= |available|
-#      - just read deployment path on list up
-#      - i.e compose_services.services.keys() --> thats it
-@apps_app.command()
-def debug_up(verbose: Optional[bool]=typer.Argument(default=False),
-             name: Optional[str]=typer.Argument(default=None)  
-             ):
-    """
-    Wrapper on ps command for debugging, returns entire output
-    if verbose=True, returns only age, image name and size otherwise
-
-    Only useful to debug if local config is suspected to be inconsistent
-    """
-
-    resp = client_proxy.get("/debugUpProxy", params={"name": name})
-
-    resp.raise_for_status()
-    apps = resp.json()
-
-    if apps:
-        parse_available(apps, verbose)
-    else:
-        print("No apps running, run deploy to deploy some")
 
 @apps_app.command("list")
 def _list():
-    """
-    Reads config to check which apps are running,
-        Might be inconsistent, when in doubt run debug-up
-    """
+    """Apps deployed through the app store, with their live state."""
     resp = client_proxy.get("/listUpProxy")
-    resp.raise_for_status()
-    print("Apps up: \n", resp.content)
+    _check(resp)
+    for a in resp.json():
+        preset = f"  [{a['preset']}]" if a.get("preset") else ""
+        print(f"{a['name']}  {a['state']}  {a['image']}{preset}")
+
 
 @apps_app.command()
 def targeted_destroy(name_arr: list[str]):
-    """
-    Unlike clear, this applies compose down *ONLY* on selected apps
-    is async but time-out errors occur need to check whats up with that
-    """
+    """Destroy the named apps."""
     for name in name_arr:
-        resp = client_proxy.delete("/targetedDestroyProxy", params={'name': name})
-        resp.raise_for_status()
+        _check(client_proxy.delete("/targetedDestroyProxy", params={"name": name}))
 
-#TODO: async + with docker compose for all apps
+
 @apps_app.command()
 def clear():
-    """
-    Downs all apps
-    """
+    """Destroy every app deployed through the app store."""
     resp = client_proxy.delete("/clearProxy")
-    resp.raise_for_status()
+    _check(resp)
+    print("Destroyed:", ", ".join(resp.json()) or "nothing")
