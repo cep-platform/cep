@@ -1,0 +1,9 @@
+name: mongodb
+image: mongo:7
+env:
+  MONGO_INITDB_ROOT_USERNAME: admin
+  MONGO_INITDB_ROOT_PASSWORD: password123
+ports:
+  - {host: 27017, container: 27017}
+mounts:
+  - {source: mongo-data, target: /data/db}

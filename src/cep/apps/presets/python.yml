@@ -1,0 +1,6 @@
+name: python-app
+image: python:3.11-slim
+workdir: /app
+command: [python, -m, http.server, "8069"]
+ports:
+  - {host: 8069, container: 8069}

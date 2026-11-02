@@ -6,12 +6,17 @@ from pydantic import ValidationError
 
 from cep.apps.spec import (
     AppSpec,
+    DeployRequest,
     InvalidSpec,
     Mount,
     Port,
+    default_name,
+    list_presets,
+    load_preset,
     parse_env,
     parse_mount,
     parse_port,
+    resolve,
 )
 
 
@@ -51,3 +56,59 @@ def test_parse_env():
 def test_appspec_rejects_bad_names(bad):
     with pytest.raises(ValidationError):
         AppSpec(name=bad, image="redis")
+
+
+def test_every_preset_loads():
+    assert list_presets() == ["mongo", "navidrome", "nginx", "postgres", "python", "redis"]
+    for p in list_presets():
+        assert load_preset(p).preset == p
+
+
+@pytest.mark.parametrize("ref,name", [
+    ("redis", "redis"),
+    ("redis:7-alpine", "redis"),
+    ("docker:redis:7", "redis"),
+    ("ghcr.io/foo/bar:1.0", "bar"),
+    ("localhost:5000/foo/baz", "baz"),
+    ("nginx@sha256:abc", "nginx"),
+])
+def test_default_name(ref, name):
+    assert default_name(ref) == name
+
+
+@pytest.mark.parametrize("ref", ["images:debian/12", "UPPER:1"])
+def test_default_name_requires_explicit_name(ref):
+    with pytest.raises(InvalidSpec, match="--name"):
+        default_name(ref)
+
+
+def test_resolve_image_ref():
+    spec = resolve(DeployRequest(target="docker:redis:7", ports=[Port(host=1, container=2)]))
+    assert (spec.name, spec.image, spec.preset, spec.ports) == (
+        "redis", "docker:redis:7", None, [Port(host=1, container=2)]
+    )
+
+
+def test_resolve_explicit_name_skips_derivation():
+    assert resolve(DeployRequest(target="images:debian/12", name="deb")).name == "deb"
+
+
+def test_resolve_preset_env_merges_and_keeps_rest():
+    base = load_preset("postgres")
+    spec = resolve(DeployRequest(target="postgres", env={"POSTGRES_PASSWORD": "x"}))
+    assert spec.env == {**base.env, "POSTGRES_PASSWORD": "x"}
+    assert spec.ports == base.ports and spec.mounts == base.mounts
+    assert spec.preset == "postgres"
+
+
+def test_resolve_preset_ports_replace():
+    assert resolve(DeployRequest(target="redis", ports=[])).ports == []
+
+
+def test_resolve_bypasses_preset_with_remote_prefix():
+    assert resolve(DeployRequest(target="docker:redis")).preset is None
+
+
+def test_resolve_bad_override_name_is_invalid_spec():
+    with pytest.raises(InvalidSpec):
+        resolve(DeployRequest(target="redis", name="Bad_Name"))
