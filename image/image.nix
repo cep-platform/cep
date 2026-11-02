@@ -132,6 +132,18 @@ let
     install -m 0755 ${repoRoot}/startupscripts/start_client.sh $out/app/start.sh
     install -m 0644 ${repoRoot}/startupscripts/client_banner.txt $out/app/client_banner.txt
   '';
+
+  # Distroless rootfs has no /etc/ssl: the static pure-Go incus-compose
+  # binary (CGO_ENABLED=0) reads the standard system cert paths, gets an
+  # empty trust pool, and every HTTPS fetch fails with "x509: certificate
+  # signed by unknown authority" (docker.io pulls; also curl/wget, whose
+  # nixpkgs builds bake in the same default path). Materialize the nixpkgs
+  # CA bundle at the standard path - NixOS hosts get this for free via
+  # security.pki, the image has to roll it by hand.
+  etc-ssl = pkgs.runCommand "cep-etc-ssl" { } ''
+    install -d -m 0755 $out/etc/ssl/certs
+    ln -s ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-certificates.crt
+  '';
 in
 {
   image = nix2container.buildImage {
@@ -141,7 +153,7 @@ in
     # change does not repush the (large, stable) Python closure.
     maxLayers = 10;
 
-    copyToRoot = [ root runtime-tree ];
+    copyToRoot = [ root runtime-tree etc-ssl ];
 
     # OCI image config keys are serialized verbatim - keep them capitalized.
     config = {
@@ -152,6 +164,9 @@ in
         "PATH=/bin"
         "PYTHONDONTWRITEBYTECODE=1"
         "PYTHONUNBUFFERED=1"
+        # Belt-and-braces for tools that honor env over paths (openssl,
+        # curl, wget, Go): the /etc/ssl symlink above already covers them.
+        "SSL_CERT_FILE=/etc/ssl/certs/ca-certificates.crt"
       ];
     };
   };
