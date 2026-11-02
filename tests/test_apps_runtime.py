@@ -21,3 +21,8 @@ def test_get_runtime_rejects_unknown(monkeypatch):
     with pytest.raises(ValueError, match="docker"):
         get_runtime()
     get_runtime.cache_clear()
+
+
+def test_run_missing_binary_is_command_failed():
+    with pytest.raises(CommandFailed, match="no-such-binary-xyz"):
+        run(["no-such-binary-xyz"])

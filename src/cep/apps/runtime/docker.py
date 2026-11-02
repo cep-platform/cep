@@ -1,9 +1,9 @@
-"""Docker runtime: one `docker run` per app. Temporary, removed once Incus replaces Docker."""
+"""Docker runtime: one container per app (`docker create` + `docker start`). Temporary, removed once Incus replaces Docker."""
 from __future__ import annotations
 
 import json
 
-from cep.apps.runtime import UnsupportedSpec, run
+from cep.apps.runtime import CommandFailed, UnsupportedSpec, run
 from cep.apps.spec import INCUS_NATIVE_REMOTES, AppSpec, AppStatus
 
 APP_LABEL = "cep.app=true"
@@ -18,8 +18,8 @@ def resolve_image(ref: str) -> str:
     return ref
 
 
-def run_argv(spec: AppSpec) -> list[str]:
-    argv = ["docker", "run", "-d", "--name", spec.name, "--label", APP_LABEL]
+def create_argv(spec: AppSpec) -> list[str]:
+    argv = ["docker", "create", "--name", spec.name, "--label", APP_LABEL]
     if spec.preset:
         argv += ["--label", f"cep.preset={spec.preset}"]
     for p in spec.ports:
@@ -52,7 +52,16 @@ def parse_ps(stdout: str) -> list[AppStatus]:
 
 class DockerRuntime:
     def deploy(self, spec: AppSpec) -> None:
-        run(run_argv(spec))
+        # Create outside the try: a name collision must never remove the existing container.
+        run(create_argv(spec))
+        try:
+            run(["docker", "start", spec.name])
+        except CommandFailed:
+            try:
+                run(["docker", "rm", "-f", spec.name])
+            except CommandFailed:
+                pass
+            raise
 
     def destroy(self, name: str) -> None:
         run(["docker", "rm", "-f", name])

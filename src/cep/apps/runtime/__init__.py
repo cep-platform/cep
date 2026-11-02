@@ -21,7 +21,10 @@ class CommandFailed(RuntimeError):
 
 
 def run(argv: list[str]) -> str:
-    proc = subprocess.run(argv, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(argv, capture_output=True, text=True)
+    except OSError as e:  # e.g. the docker/incus binary is not installed
+        raise CommandFailed(argv, str(e)) from e
     if proc.returncode != 0:
         raise CommandFailed(argv, proc.stderr)
     return proc.stdout

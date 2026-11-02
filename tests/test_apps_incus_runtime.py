@@ -134,3 +134,18 @@ def test_get_runtime_incus(monkeypatch):
     monkeypatch.setattr("cep.apps.runtime.incus.run", lambda argv: "{}")
     assert isinstance(get_runtime(), IncusRuntime)
     get_runtime.cache_clear()
+
+
+def test_remotes_reread_on_each_deploy(monkeypatch):
+    """The UnsupportedSpec hint says `incus remote add ...`; that must work without a restart."""
+    remotes_json = ["{}"]
+
+    def fake_run(argv):
+        return remotes_json[0] if argv[:3] == ["incus", "remote", "list"] else ""
+
+    monkeypatch.setattr("cep.apps.runtime.incus.run", fake_run)
+    rt = IncusRuntime()
+    with pytest.raises(UnsupportedSpec):
+        rt.deploy(AppSpec(name="r", image="redis"))
+    remotes_json[0] = json.dumps({"docker": {"Addr": "https://docker.io", "Protocol": "oci"}})
+    rt.deploy(AppSpec(name="r", image="redis"))

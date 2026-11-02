@@ -49,6 +49,8 @@ class AppSpec(BaseModel):
     ports: list[Port] = []
     env: dict[str, str] = {}
     mounts: list[Mount] = []
+    # Docker: replaces the image's CMD, keeping its ENTRYPOINT. Incus: becomes
+    # oci.entrypoint, replacing ENTRYPOINT + CMD, so entrypoint init scripts are skipped.
     command: list[str] | None = None
     workdir: str | None = None
     restart: bool = True

@@ -99,15 +99,20 @@ def parse_list(stdout: str) -> list[AppStatus]:
     ]
 
 
+def load_remotes() -> dict[str, Remote]:
+    raw = json.loads(run(["incus", "remote", "list", "--format", "json"]))
+    return {k: Remote(v["Addr"], v["Protocol"]) for k, v in raw.items()}
+
+
 class IncusRuntime:
     def __init__(self, remotes: dict[str, Remote] | None = None):
-        if remotes is None:
-            raw = json.loads(run(["incus", "remote", "list", "--format", "json"]))
-            remotes = {k: Remote(v["Addr"], v["Protocol"]) for k, v in raw.items()}
-        self.remotes = remotes
+        """`remotes` pins the remote list (tests); otherwise it is re-read on every
+        deploy, so `incus remote add ...` takes effect without a restart."""
+        self._remotes = remotes
 
     def deploy(self, spec: AppSpec) -> None:
-        create, *rest = create_commands(spec, resolve_image(spec.image, self.remotes))
+        remotes = self._remotes if self._remotes is not None else load_remotes()
+        create, *rest = create_commands(spec, resolve_image(spec.image, remotes))
 
         for m in spec.mounts:
             if m.is_volume:
