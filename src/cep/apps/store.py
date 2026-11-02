@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from cep.apps.docker import Docker
+from cep.apps.spec import list_presets
 
 store_router = APIRouter(prefix="/store")
 
@@ -12,4 +12,5 @@ def health():
 
 @store_router.get("/list")
 def _list() -> list[str]:
-    return Docker.list_available_apps()
+    """Names of the presets that can be deployed by name."""
+    return list_presets()

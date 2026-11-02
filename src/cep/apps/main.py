@@ -1,6 +1,10 @@
 from typing import Optional
-from fastapi import FastAPI, HTTPException
-from cep.apps.docker import Docker
+
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
+
+from cep.apps.runtime import CommandFailed, Runtime, get_runtime
+from cep.apps.spec import AppSpec, AppStatus, DeployRequest, InvalidSpec, resolve
 from cep.apps.store import store_router
 from cep.storage.docker import Pool, Volume, list_pools, list_all_volumes
 
@@ -8,106 +12,51 @@ app = FastAPI()
 app.include_router(store_router)
 
 
+@app.exception_handler(InvalidSpec)
+def _invalid_spec(_: Request, e: InvalidSpec):
+    return JSONResponse(status_code=422, content={"detail": str(e)})
+
+
+@app.exception_handler(CommandFailed)
+def _command_failed(_: Request, e: CommandFailed):
+    return JSONResponse(status_code=500, content={"detail": e.stderr})
+
+
 @app.get("/health")
 def health():
-    """
-    Health check endpoint.
-
-    Returns a simple static response to indicate that the service
-    is running and reachable.
-
-    Returns:
-        str: Always returns "ok" if the service is healthy.
-    """
+    """Liveness check; always returns "ok"."""
     return "ok"
 
 
-@app.get("/debugUp")
-def _debug_up(name: str):
-    """
-    Start a Docker service in debug mode.
-
-    Brings up the specified application or service using a debug
-    configuration. Intended for development and troubleshooting.
-
-    Args:
-        name (str): Name of the application or service to start in debug mode.
-
-    Returns:
-        Any: Result of the Docker.debug_up() operation.
-    """
-    return Docker.debug_up()
+@app.post("/deploy")
+def _deploy(req: DeployRequest, runtime: Runtime = Depends(get_runtime)) -> AppSpec:
+    """Deploy a preset or any image ref (with optional overrides); returns the deployed spec."""
+    spec = resolve(req)
+    runtime.deploy(spec)
+    return spec
 
 
 @app.get("/list")
-def _list() -> list[str]:
-    """
-    List currently running Docker services.
-
-    Retrieves a list of application or service names that are
-    currently up according to Docker.
-
-    Returns:
-        list[str]: List of running application or service names.
-    """
-    return Docker.list_up()
-
-
-@app.post("/deploy")
-def _deploy(name: str):
-    """
-    Deploy an application using its Docker template.
-
-    Fetches the application template, adds it to the deployment
-    configuration, and brings up the Docker Compose stack.
-
-    Args:
-        name (str): Name of the application to deploy.
-
-    Side Effects:
-        - Updates the deployment file.
-        - Runs `docker compose up` (or equivalent).
-    """
-    app_template = Docker.get_app_template(name)
-    Docker.add_to_deployment_file(app_template)
-    Docker.compose_up()
+def _list(runtime: Runtime = Depends(get_runtime)) -> list[AppStatus]:
+    """Apps deployed through the app store, with their live state."""
+    return runtime.list()
 
 
 @app.delete("/targetedDestroy")
-async def _destroy(name: str):
-    """
-    Destroy a specific deployed application or service.
-
-    Stops and removes the specified application or service. If the
-    operation succeeds, the deployment file is updated accordingly.
-
-    Args:
-        name (str): Name of the application or service to destroy.
-
-    Side Effects:
-        - Stops and removes targeted Docker resources.
-        - Updates the deployment file on success.
-    """
-    return_code = await Docker.targeted_destroy(name)
-    if return_code == 0:
-        Docker.update_deployment_file(name)
+def _destroy(name: str, runtime: Runtime = Depends(get_runtime)):
+    """Destroy one app. 404 for anything the app store did not deploy."""
+    if name not in {a.name for a in runtime.list()}:
+        raise HTTPException(status_code=404, detail=f"no app named '{name}'")
+    runtime.destroy(name)
 
 
 @app.delete("/clear")
-async def _delete():
-    """
-    Destroy all deployed applications and clear deployment state.
-
-    Stops and removes all managed Docker services and clears the
-    deployment configuration file if the operation succeeds.
-
-    Side Effects:
-        - Stops and removes all Docker resources managed by this service.
-        - Clears the deployment file on success.
-    """
-    return_code = await Docker.clear()
-    if return_code == 0:
-        Docker.clear_deployment_file()
+def _clear(runtime: Runtime = Depends(get_runtime)) -> list[str]:
+    """Destroy every app deployed through the app store; returns their names."""
+    names = [a.name for a in runtime.list()]
+    for name in names:
+        runtime.destroy(name)
+    return names
 
 
 # ---------------------------------------------------------------------------
