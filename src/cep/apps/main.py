@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 
 from cep.apps.incus import ComposeConfig, Incus
 from cep.apps.caddy import CaddyReverseProxy
+from cep.apps.spec import NAME_RE
 from cep.apps.store import store_router
 
 
@@ -42,8 +43,11 @@ app.include_router(store_router)
 
 
 class AppInstallRequest(BaseModel):
-    id: str
-    config: dict[str, str] = Field(default_factory=dict)
+    """Deploy `compose` as app `id`. cep-main renders the compose file from a
+    preset, an image ref or a user file (cep.apps.compose)."""
+
+    id: str = Field(pattern=NAME_RE)  # also the deployment dir name
+    compose: ComposeConfig
 
 
 class JobState(str, Enum):
@@ -108,7 +112,7 @@ async def list_apps():
 @app.get("/jobs/{job_id}", response_model=JobStatus)
 async def get_job(job_id: str) -> JobStatus:
     """Poll target for POST /: the job's state and, when done, the app
-    template as result."""
+    compose file as result."""
     job = JOBS.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
@@ -126,23 +130,16 @@ async def install_app(
         background_tasks: BackgroundTasks,
         ) -> AppInstallAccepted:
     """
-    Non-blocking install: validate the template synchronously (fast 404 for
-    an unknown app), run the incus-compose deployment as a background job
-    and return 202 + job_id immediately; poll GET /jobs/{job_id} for the
+    Non-blocking install: the request body is validated synchronously
+    (422), the incus-compose deployment runs as a background job and the
+    202 + job_id returns immediately; poll GET /jobs/{job_id} for the
     outcome.
     """
-    try:
-        app_template = Incus.get_app_template(request.id)
-    except ValueError as e:
-        # get_app_template's message names the template dir and lists the
-        # available apps; surface it as an actionable 404, not a 500.
-        raise HTTPException(status_code=404, detail=str(e))
-
     job_id = uuid4().hex
     JOBS[job_id] = JobStatus(id=job_id, state=JobState.RUNNING)
     # Sync task -> starlette runs it in the threadpool, so the blocking
     # incus-compose subprocess never blocks the event loop.
-    background_tasks.add_task(_run_install_job, job_id, request.id, app_template)
+    background_tasks.add_task(_run_install_job, job_id, request.id, request.compose)
     return AppInstallAccepted(job_id=job_id, status=JobState.RUNNING)
 
 

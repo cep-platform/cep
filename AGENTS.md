@@ -132,18 +132,22 @@ startupscripts/  Client container entrypoints.
 - `PRAGMA synchronous` must be set **before** `PRAGMA journal_mode=WAL`
   in `db._new_connection()`: switching a fresh db to WAL fsyncs under the
   then-current sync level.
-- App templates live in `src/cep/apps/app_templates/` and are looked up
-  via importlib.resources as `cep.apps.app_templates` (see
-  `cep.apps.incus`); nebula/bundle templates live in `src/cep/templates/`
-  (`get_template_path()`).
-- App templates must join the stack's shared bridge as an *external*
+- App presets live in `src/cep/apps/presets/` as single-container
+  `AppSpec` YAML (`cep.apps.spec`), looked up via importlib.resources as
+  `cep.apps.presets`; nebula/bundle templates live in `src/cep/templates/`
+  (`get_template_path()`). Every deploy (preset, image ref or user
+  compose file) is rendered to compose by `cep.apps.compose` in cep-main
+  and sent to the appstore, which only runs it through incus-compose.
+- Deployed apps must join the stack's shared bridge as an *external*
   network: `networks: {cep: {name: cep, external: true}}`, with the same
   name pinned in compose.yml. caddy routes dial `<container_name>:<proxy
   port>` by instance-name DNS, which only works on the shared bridge — a
   non-external network silently gives every app its own isolated
   `<project>-cep` bridge (the appstore deploys each app as its own incus
-  project) and caddy answers 502. `tests/test_incus.py`
-  (`TestAppTemplateSharedNetwork`) guards this contract.
+  project) and caddy answers 502. `cep.apps.compose` injects this (and
+  the routed service's container_name/proxy-port label) into every
+  compose it renders or adopts; `tests/test_apps_compose.py` and
+  `tests/test_incus.py` guard the contract.
 - Image build: `image/build.sh` imports the nix-built image under
   `local/cep:latest` AND `local/cep:latest/amd64` in the
   `incus-compose-cache` project — incus-compose looks images up with the

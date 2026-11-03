@@ -1,0 +1,46 @@
+firewall:
+  conntrack:
+    default_timeout: 10m
+    tcp_timeout: 12m
+    udp_timeout: 3m
+  inbound:
+  - host: any
+    port: any
+    proto: any
+  inbound_action: drop
+  outbound:
+  - host: any
+    port: any
+    proto: any
+  outbound_action: drop
+lighthouse:
+  am_lighthouse: false
+  hosts:
+  - fd07:4d30:4a70:7f67::1
+  interval: 60
+listen:
+  host: '::'
+  port: 4242
+logging:
+  format: text
+  level: info
+pki:
+  ca: ca.crt
+  cert: laptop5.crt
+  key: laptop5.key
+punchy:
+  punch: true
+relay:
+  am_relay: false
+  use_relays: true
+static_host_map:
+  fd07:4d30:4a70:7f67::1: 217.123.90.171:4242
+tun:
+  dev: nebula1
+  disabled: false
+  drop_local_broadcast: false
+  drop_multicast: false
+  mtu: 1300
+  routes: null
+  tx_queue: 500
+  unsafe_routes: null

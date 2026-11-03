@@ -1,0 +1,7 @@
+name: navidrome
+image: deluan/navidrome:latest
+ports:
+  - {host: 4533, container: 4533}
+mounts:
+  - {source: data, target: /data}
+  - {source: music, target: /music, read_only: true}

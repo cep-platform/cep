@@ -2,9 +2,12 @@
 Tests for the apps CLI commands.
 
 deploy:
-- Forwards app name and network name to /apps/deployProxy
+- Forwards a DeployRequest body (preset/image ref + flag overrides, or a
+  compose file) and the network name to /apps/deployProxy
+- Unset flags stay unset so they don't override a preset
 - Uses a long per-request timeout (deploys poll for minutes server-side)
-- Fails on non-2xx responses (raise_for_status)
+- Bad flags / unreadable compose files fail locally; nothing is sent
+- Fails on non-2xx responses and prints the server's detail
 
 run:
 - --log-level flag is forwarded to uvicorn and drives the root logger
@@ -28,8 +31,13 @@ from cep.cli.apps import apps_app
 
 
 class _FakeResponse:
-    def __init__(self, status_code: int = 200):
+    def __init__(self, status_code: int = 200, detail: str = "boom"):
         self.status_code = status_code
+        self.is_error = status_code >= 400
+        self.detail = detail
+
+    def json(self) -> dict:
+        return {"detail": self.detail}
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
@@ -42,14 +50,18 @@ class _FakeResponse:
 
 class _FakeProxyClient:
     def __init__(self):
-        self.posts: list[tuple[str, dict, float | None]] = []
+        self.posts: list[tuple[str, dict, dict, float | None]] = []
         self.deletes: list[tuple[str, dict]] = []
         self.response = _FakeResponse()
 
     def post(
-        self, path: str, params: dict | None = None, timeout: float | None = None
+        self,
+        path: str,
+        params: dict | None = None,
+        json: dict | None = None,
+        timeout: float | None = None,
     ) -> _FakeResponse:
-        self.posts.append((path, params, timeout))
+        self.posts.append((path, params, json, timeout))
         return self.response
 
     def delete(self, path: str, params: dict | None = None) -> _FakeResponse:
@@ -65,7 +77,7 @@ def fake_proxy_client(monkeypatch: pytest.MonkeyPatch) -> _FakeProxyClient:
 
 
 class TestDeployCommand:
-    def test_forwards_app_and_network_names_with_long_timeout(
+    def test_forwards_target_and_network_with_long_timeout(
         self, cli_runner, fake_proxy_client
     ):
         from cep.cli.apps import DEPLOY_TIMEOUT
@@ -74,22 +86,64 @@ class TestDeployCommand:
 
         assert result.exit_code == 0, result.output
         assert fake_proxy_client.posts == [
-            (
-                "/deployProxy",
-                {"name": "redis", "network_name": "testnet"},
-                DEPLOY_TIMEOUT,
-            )
+            ("/deployProxy", {"network_name": "testnet"}, {"target": "redis"}, DEPLOY_TIMEOUT)
         ], (
-            "deploys poll the appstore job for minutes server-side; the CLI's "
+            "unset flags must not be sent (they would override the preset); "
+            "deploys poll the appstore job for minutes server-side, so the "
             "default 5s read timeout would abort every deploy"
         )
 
-    def test_fails_on_non_2xx_response(self, cli_runner, fake_proxy_client):
-        fake_proxy_client.response = _FakeResponse(status_code=409)
+    def test_forwards_flag_overrides(self, cli_runner, fake_proxy_client):
+        result = cli_runner.invoke(apps_app, [
+            "deploy", "ghcr.io/foo/web:1", "testnet", "--name", "web",
+            "--port", "8080:80", "--env", "A=1", "--volume", "data:/data:ro",
+            "--proxy-port", "80", "--privileged",
+        ])
+
+        assert result.exit_code == 0, result.output
+        assert fake_proxy_client.posts[0][2] == {
+            "target": "ghcr.io/foo/web:1",
+            "name": "web",
+            "ports": [{"host": 8080, "container": 80, "protocol": "tcp"}],
+            "env": {"A": "1"},
+            "mounts": [{"source": "data", "target": "/data", "read_only": True}],
+            "privileged": True,
+            "proxy_port": 80,
+        }
+
+    def test_sends_a_compose_file_target_as_compose(
+        self, cli_runner, fake_proxy_client, tmp_path
+    ):
+        path = tmp_path / "compose.yml"
+        path.write_text("services:\n  web:\n    image: nginx\n")
+
+        result = cli_runner.invoke(
+            apps_app, ["deploy", str(path), "testnet", "--proxy-port", "80"]
+        )
+
+        assert result.exit_code == 0, result.output
+        assert fake_proxy_client.posts[0][2] == {
+            "compose": {"services": {"web": {"image": "nginx"}}},
+            "proxy_port": 80,
+        }
+
+    @pytest.mark.parametrize("args", [
+        ["redis", "testnet", "--port", "nope"],
+        ["missing.yml", "testnet"],
+    ])
+    def test_rejects_bad_input_locally(self, cli_runner, fake_proxy_client, args):
+        result = cli_runner.invoke(apps_app, ["deploy", *args])
+
+        assert result.exit_code == 1
+        assert fake_proxy_client.posts == []
+
+    def test_fails_on_non_2xx_response_with_detail(self, cli_runner, fake_proxy_client):
+        fake_proxy_client.response = _FakeResponse(409, "App 'redis' is already deployed")
 
         result = cli_runner.invoke(apps_app, ["deploy", "redis", "testnet"])
 
-        assert result.exit_code != 0
+        assert result.exit_code == 1
+        assert "already deployed" in result.output
 
 
 class TestTargetedDestroyCommand:

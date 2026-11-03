@@ -1,0 +1,18 @@
+{
+  "format": "cep-bundle",
+  "format_version": 1,
+  "bundle_id": "",
+  "created_at": "2026-05-17T17:42:39.494299",
+  "backends": {
+    "nebula": {
+      "enabled": true,
+      "path": "nebula/",
+      "config_file": "config.yml",
+      "files": {
+        "ca": "ca.crt",
+        "cert": "adamHost1.crt",
+        "key": "adamHost1.key"
+      }
+    }
+  }
+}
