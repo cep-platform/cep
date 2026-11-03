@@ -1,31 +1,37 @@
 #!/bin/sh
 set -e
 
-cat /app/client_banner.txt
+# Works both on the host (cep installed in the uv venv) and inside the cep
+# image (bare `cep` on PATH, no uv there).
+if command -v cep >/dev/null 2>&1; then
+  CEP="cep"
+else
+  CEP="uv run cep"
+fi
 
 sleep 5
-# sleep until the server is reachable
-while ! uv run cep network list; do
+
+# Wait until the main server is reachable
+
+until $CEP network list; do
     echo "Main server not yet online, retrying in 4"
     sleep 4
 done
 
-# Get network name from env variable or default
 NETWORK_NAME="${NETWORK_NAME:-cepnet}"
 HOST_NAME="${HOST_NAME:-mainserver}"
 
-# Create an initial network
-uv run cep network create "$NETWORK_NAME" --no-dns
+$CEP network create "$NETWORK_NAME" --no-dns
 
-# Create a user for the server
-uv run cep host create "$NETWORK_NAME" "$HOST_NAME" --am-lighthouse --public-ip $LIGHTHOUSE_STABLE_IP
-uv run cep host connect "$NETWORK_NAME" "$HOST_NAME" &
+$CEP host create "$NETWORK_NAME" "$HOST_NAME" \
+    --am-lighthouse --public-ip "$LIGHTHOUSE_STABLE_IP"
 
-pid=$!
-# Wait until service is ready
-until ip a | grep nebula; do
-  sleep 0.5
+$CEP host connect "$NETWORK_NAME" "$HOST_NAME" --detach
+# pid=$!
+
+until ip a | grep -q nebula; do
+    sleep 0.5
 done
 
-uv run cep dns start "$NETWORK_NAME"
-wait "$pid"
+$CEP dns start "$NETWORK_NAME"
+# wait "$pid"

@@ -122,10 +122,10 @@ Findings are grouped by severity. File references use `path:line`.
 > receive 405.
 
 ### 1.8 Fire-and-forget compose operations
-- `src/cep/apps/docker.py:129` — `compose_up` uses `subprocess.Popen` and
+- `src/cep/apps/incus.py:129` — `compose_up` uses `subprocess.Popen` and
   never waits/checks: deploy reports success before containers exist and all
   failures are invisible.
-- `src/cep/apps/docker.py:188,204` — `targeted_destroy`/`clear` are
+- `src/cep/apps/incus.py:188,204` — `targeted_destroy`/`clear` are
   `async def` but block the event loop via `Popen.communicate()`; and
   `src/cep/apps/main.py:111-117` calls `compose_up()` + returns 200 even when
   the destroy return code is non-zero.
@@ -186,7 +186,15 @@ Findings are grouped by severity. File references use `path:line`.
   (`src/cep/server/apps/__init__.py`): appstore deploy succeeds, then the
   caddy update fails → app runs but is not tracked in `network_record.apps`,
   no compensation/rollback. Same for destroy. Needs transactional steps or
-  reconciliation.
+  reconciliation. (Narrowed for deploy on `feature/switch-to-incus`: the
+  appstore install is now an async job that cep-main polls to `done` before
+  wiring caddy/DNS/DB, so the appstore leg can no longer diverge silently.)
+- **Appstore install jobs are in-memory only** (`src/cep/apps/main.py`):
+  `JOBS` is a process-local dict with no pruning — an appstore restart
+  forgets running jobs (pollers then get 404) and finished ones. The
+  deploy itself lives in incus, so only observability is lost, but a
+  restart mid-deploy leaves the app deployed with nothing tracking the
+  job. Persist/limit jobs once deploys outlive single-process memory.
 - **`/network/list` reads the data directory, not the DB**
   (`src/cep/server/network.py:51`) — the two can diverge (dir deleted but
   record kept and vice versa). `network delete` also `rmtree`s *before*

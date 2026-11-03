@@ -206,7 +206,7 @@ class TestEnsureInitialized:
         recorder = _RequestsRecorder(get_response=_FakeResponse(json_data=None))
         monkeypatch.setattr("cep.apps.caddy.requests", recorder)
 
-        assert CaddyReverseProxy.ensure_initialized() is True
+        assert CaddyReverseProxy.ensure_initialized() is CaddyInitOutcome.WROTE_CONFIG
 
         url, posted = recorder.posts[0]
         assert url == f"{CADDY_ADMIN_URL}/load"

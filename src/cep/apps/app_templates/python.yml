@@ -13,3 +13,9 @@ services:
     ports:
       - "8069:8069"
     restart: unless-stopped
+
+networks:
+  #TODO: temporary fix until more coherent networking is designed for cep
+  cep:
+    name: cep
+    external: true

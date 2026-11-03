@@ -1,0 +1,18 @@
+# Dev overlay for compose.yml - used by `make dev`:
+#   incus-compose -f compose.yml -f compose.dev.yml up -d
+#
+services:
+
+  cep-main:
+    command: ["server", "run", "--log-level", "debug"]
+    volumes:
+      - ./src:/app/src:ro
+    environment:
+      PYTHONPATH: /app/src
+
+  cep-appstore:
+    command: ["apps", "run", "--log-level", "debug"]
+    volumes:
+      - ./src:/app/src:ro
+    environment:
+      PYTHONPATH: /app/src

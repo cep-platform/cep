@@ -3,7 +3,13 @@ Tests for the apps CLI commands.
 
 deploy:
 - Forwards app name and network name to /apps/deployProxy
+- Uses a long per-request timeout (deploys poll for minutes server-side)
 - Fails on non-2xx responses (raise_for_status)
+
+run:
+- --log-level flag is forwarded to uvicorn and drives the root logger
+  (compose.dev.yml sets it to debug)
+- Fails on unknown log levels
 
 targeted-destroy:
 - Forwards network name together with every app name to
@@ -36,12 +42,14 @@ class _FakeResponse:
 
 class _FakeProxyClient:
     def __init__(self):
-        self.posts: list[tuple[str, dict]] = []
+        self.posts: list[tuple[str, dict, float | None]] = []
         self.deletes: list[tuple[str, dict]] = []
         self.response = _FakeResponse()
 
-    def post(self, path: str, params: dict | None = None) -> _FakeResponse:
-        self.posts.append((path, params))
+    def post(
+        self, path: str, params: dict | None = None, timeout: float | None = None
+    ) -> _FakeResponse:
+        self.posts.append((path, params, timeout))
         return self.response
 
     def delete(self, path: str, params: dict | None = None) -> _FakeResponse:
@@ -57,13 +65,24 @@ def fake_proxy_client(monkeypatch: pytest.MonkeyPatch) -> _FakeProxyClient:
 
 
 class TestDeployCommand:
-    def test_forwards_app_and_network_names(self, cli_runner, fake_proxy_client):
+    def test_forwards_app_and_network_names_with_long_timeout(
+        self, cli_runner, fake_proxy_client
+    ):
+        from cep.cli.apps import DEPLOY_TIMEOUT
+
         result = cli_runner.invoke(apps_app, ["deploy", "redis", "testnet"])
 
         assert result.exit_code == 0, result.output
         assert fake_proxy_client.posts == [
-            ("/deployProxy", {"name": "redis", "network_name": "testnet"})
-        ]
+            (
+                "/deployProxy",
+                {"name": "redis", "network_name": "testnet"},
+                DEPLOY_TIMEOUT,
+            )
+        ], (
+            "deploys poll the appstore job for minutes server-side; the CLI's "
+            "default 5s read timeout would abort every deploy"
+        )
 
     def test_fails_on_non_2xx_response(self, cli_runner, fake_proxy_client):
         fake_proxy_client.response = _FakeResponse(status_code=409)
@@ -93,3 +112,43 @@ class TestTargetedDestroyCommand:
         )
 
         assert result.exit_code != 0
+
+
+@pytest.fixture()
+def fake_uvicorn(monkeypatch: pytest.MonkeyPatch) -> list[dict]:
+    """Capture uvicorn.run kwargs without starting a server."""
+    calls: list[dict] = []
+    monkeypatch.setattr(
+        "cep.cli.apps.uvicorn.run", lambda *a, **kw: calls.append({"args": a, **kw})
+    )
+    return calls
+
+
+class TestRunCommand:
+    def test_log_level_defaults_to_info(self, cli_runner, fake_uvicorn):
+        result = cli_runner.invoke(apps_app, ["run"])
+
+        assert result.exit_code == 0, result.output
+        assert fake_uvicorn[0]["log_level"] == "info"
+        assert fake_uvicorn[0]["log_config"]["root"]["level"] == "INFO"
+
+    def test_forwards_debug_log_level_and_configures_root_logger(
+        self, cli_runner, fake_uvicorn
+    ):
+        result = cli_runner.invoke(apps_app, ["run", "--log-level", "debug"])
+
+        assert result.exit_code == 0, result.output
+        assert fake_uvicorn[0]["log_level"] == "debug"
+        # App-level logging (e.g. cep.server.apps) goes through the root
+        # logger; it must be set so debug lines actually surface.
+        assert fake_uvicorn[0]["log_config"]["root"] == {
+            "handlers": ["default"],
+            "level": "DEBUG",
+        }
+
+    def test_rejects_unknown_log_level(self, cli_runner, fake_uvicorn):
+        result = cli_runner.invoke(apps_app, ["run", "--log-level", "verbose"])
+
+        assert result.exit_code != 0
+        assert "unknown log level 'verbose'" in result.output
+        assert fake_uvicorn == []

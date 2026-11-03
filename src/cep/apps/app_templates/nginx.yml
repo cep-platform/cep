@@ -14,3 +14,9 @@ services:
     #   - ./nginx.conf:/etc/nginx/nginx.conf:ro
     restart: unless-stopped
 
+networks:
+  #TODO: temporary fix until more coherent networking is designed for cep
+  cep:
+    name: cep
+    external: true
+

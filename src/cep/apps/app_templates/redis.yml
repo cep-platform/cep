@@ -16,3 +16,9 @@ services:
 volumes:
   redis-data:
 
+networks:
+  #TODO: temporary fix until more coherent networking is designed for cep
+  cep:
+    name: cep
+    external: true
+
