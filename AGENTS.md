@@ -166,3 +166,5 @@ startupscripts/  Client container entrypoints.
 - Branches: `<type>/<kebab-case>` with type in {feature, bugfix, chore,
   docs} (e.g. `feature/attach-volume`).
 - Small focused PRs; include tests for behavior changes.
+- Code changes should be minimally scoped and implemented, such that
+  changes stay manageable for review.
