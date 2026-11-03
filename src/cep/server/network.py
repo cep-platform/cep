@@ -4,14 +4,20 @@ import subprocess
 from ipaddress import IPv6Address, IPv6Network
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
 from cep.utils import get_executable_path
-from cep.datamodels import LighthouseResponse, NetworkRecord
-from cep.server.utils import (
-        SERVER_DATA_DIR,
-        save_db,
-        load_db,
+from cep.datamodels import (
+        LighthouseResponse,
+        NetworkCreateRequest,
+        NetworkRecord,
+        NetworkStore,
+        )
+from cep.server.utils import SERVER_DATA_DIR
+from cep.server.db import (
+        get_network_store,
+        get_network_store_write,
+        DB_FILENAME,
         )
 
 from cep.server.dns import (
@@ -32,47 +38,85 @@ def generate_ula_prefix() -> IPv6Network:
 #TODO: test_this (DONE!!)
 def create_ca(name: str, ca_dir: Path) -> Path:
     nebula_cert_executable_path = get_executable_path('nebula-cert')
-    subprocess.run([
-        nebula_cert_executable_path,
-        'ca',
-        '-name',
-        name,
-        ], capture_output=True, text=True)
-
-    ca_files = list(Path.cwd().glob('ca.*'))
-    for file in ca_files:
-        file.rename(ca_dir / file.name)
+    try:
+        subprocess.run([
+            nebula_cert_executable_path,
+            'ca',
+            '-name', name,
+            '-out-crt', ca_dir / 'ca.crt',
+            '-out-key', ca_dir / 'ca.key',
+            ], capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+                status_code=500,
+                detail=f"Failed to create CA for network '{name}': {e.stderr.strip()}",
+                )
 
     return ca_dir
 
 
 @network_router.get("/list")
 def _list() -> list[str]:
-    return [path.name for path in SERVER_DATA_DIR.glob('*') if path.name != 'db.json']
+    # db.sqlite3-wal / db.sqlite3-shm are WAL sidecar files of the state DB.
+    state_files = {
+            DB_FILENAME,
+            f'{DB_FILENAME}-wal',
+            f'{DB_FILENAME}-shm',
+            }
+    return [
+            path.name for path in SERVER_DATA_DIR.glob('*')
+            if path.name not in state_files
+            ]
 
 
-@network_router.get("/create")
-def create(name: str, dns: bool) -> NetworkRecord:
+@network_router.post("/create")
+def create(request: NetworkCreateRequest, network_store: NetworkStore = Depends(get_network_store_write)) -> NetworkRecord:
+    if request.name in network_store.networks:
+        raise HTTPException(
+                status_code=409,
+                detail=f"Network '{request.name}' already exists",
+                )
+
+    network_data_dir = SERVER_DATA_DIR / request.name
+    if network_data_dir.exists():
+        raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Data for network '{request.name}' exists on disk but there is no DB record; "
+                    f"remove {network_data_dir} or run 'cep network delete {request.name}' first"
+                    ),
+                )
+
     subnet = generate_ula_prefix()
-    network_record = NetworkRecord(name=name, subnet=subnet, hosts={}, dns=dns)
+    network_record = NetworkRecord(name=request.name, subnet=subnet, hosts={}, apps={}, dns=request.dns)
 
-    network_data_dir = SERVER_DATA_DIR / network_record.name
+    # Unreachable today (guarded above), kept so the CA-failure cleanup below
+    # stays correct if the guard is ever relaxed.
+    dir_existed = network_data_dir.exists()
     network_data_dir.mkdir(exist_ok=True)
 
-    create_ca(name=name, ca_dir=network_data_dir)
+    try:
+        create_ca(name=request.name, ca_dir=network_data_dir)
+    except HTTPException:
+        # Don't leave a half-created (empty) data dir behind: /network/list
+        # reads the data dir, so it must not diverge from the DB. A directory
+        # that already existed (duplicate-name create) is left untouched.
+        if not dir_existed:
+            shutil.rmtree(network_data_dir, ignore_errors=True)
+        raise
 
-    network_store = load_db()
     network_store.networks[network_record.name] = network_record
-    save_db(network_store)
+    # No explicit save: the request's write transaction persists and
+    # commits on success (see get_network_store_write).
 
-    if dns:
+    if request.dns:
         start_dns(subnet=str(subnet))
 
     return network_record
 
 #TODO: test_this (DONE!!): make sure network_record deletion is tested
 @network_router.delete("/delete")
-def delete(name: str):
+def delete(name: str, network_store: NetworkStore = Depends(get_network_store_write)):
     network_data_dir = SERVER_DATA_DIR / name
     if not network_data_dir.exists():
         raise HTTPException(status_code=404, detail="Network data not found")
@@ -81,7 +125,6 @@ def delete(name: str):
     shutil.rmtree(network_data_dir)
 
     # Delete from DB
-    network_store = load_db()
     if name not in network_store.networks:
         raise HTTPException(status_code=404, detail="Network not found")
     
@@ -89,7 +132,6 @@ def delete(name: str):
         stop_dns()
 
     del network_store.networks[name]
-    save_db(network_store)
 
     
 
@@ -99,8 +141,7 @@ def delete(name: str):
 
 #TODO: test_this (DONE!!): create dummy database and check if the contents match the spec
 @network_router.get("/show")
-def show(name: str) -> NetworkRecord:
-    network_store = load_db()
+def show(name: str, network_store: NetworkStore = Depends(get_network_store)) -> NetworkRecord:
     response = network_store.networks.get(name, None)
     if response:
         return response
@@ -109,8 +150,7 @@ def show(name: str) -> NetworkRecord:
 
 
 @network_router.get("/lighthouses")
-def lighthouses(network_name: str) -> LighthouseResponse:
-    network_store = load_db()
+def lighthouses(network_name: str, network_store: NetworkStore = Depends(get_network_store)) -> LighthouseResponse:
     network_record = network_store.networks.get(network_name, None)
     if not network_record:
         raise HTTPException(status_code=404, detail="Network not found")

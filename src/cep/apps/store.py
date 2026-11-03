@@ -12,5 +12,4 @@ def health():
 
 @store_router.get("/list")
 def _list() -> list[str]:
-    """Names of the presets that can be deployed by name."""
     return list_presets()

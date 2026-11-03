@@ -5,59 +5,41 @@ The app server calls are all routed through the main server behind proxies for s
 
 ## How deploys work
 
-An app is a single container described by an `AppSpec` (`spec.py`): image ref,
-ports, env, mounts, command, workdir, restart, privileged. Specs come from either
+`cep apps deploy TARGET NETWORK` accepts three kinds of TARGET:
 
-- a **preset** in `presets/<name>.yml` (`cep apps deploy redis`), or
-- **any image ref** plus flags
-  (`cep apps deploy ghcr.io/foo/bar:1.0 --port 8080:80 --env K=V --volume data:/data`).
-
-Flags override a preset: `--env` merges key by key; `--port` / `--volume`
-replace the preset's list. Prefix a ref with `docker:` to skip a preset with the
-same name (`docker:redis`).
-
-The spec is handed to a `Runtime` (`runtime/`), chosen once per app-store
-instance by `CEP_APP_RUNTIME`:
-
-| Value | Runtime |
+| TARGET | Example |
 |---|---|
-| `docker` (default) | one `docker run` per app |
-| `incus` | `incus create` + proxy/disk devices + `incus start` |
+| a **preset** (`presets/<name>.yml`, `cep apps store list`) | `cep apps deploy redis net` |
+| **any OCI image ref** plus flags | `cep apps deploy ghcr.io/foo/bar:1.0 net --port 8080:80 --env K=V --volume data:/data` |
+| **your own compose file** (`.yml`/`.yaml`) | `cep apps deploy ./compose.yml net` |
 
-Every container the app store creates is labelled `cep.app=true` (and
-`cep.preset=<name>` when deployed from a preset); Docker uses labels, Incus
-`user.cep.*` config keys. `list`, `targeted-destroy` and `clear` only ever see
-labelled containers.
+Presets and image refs are a single-container `AppSpec` (`spec.py`). Flags
+override a preset: `--env` merges key by key, `--port` / `--volume` replace
+the preset's list. Use a full ref (`docker.io/library/redis`) to skip a preset
+with the same name. Image refs resolve like Docker's (bare names go to
+`docker.io`); other registries need an incus OCI remote.
 
-## Image refs
+Everything ends up as compose (`compose.py`). cep-main renders the request,
+checks the app name against the network, and sends `{id, compose}` to the app
+store, which runs it with `incus-compose` as a background job.
 
-Refs follow Incus's `[remote:]image` convention.
+## Routing contract
 
-- `redis:7`, `ghcr.io/foo/bar:1.0` — OCI images; work on both runtimes.
-- `docker:redis:7` — explicit Docker Hub.
-- `images:debian/12` — Incus-native image; Incus runtime only.
+caddy dials `<container_name>:<cep.proxy.port>` over the shared `cep` bridge,
+so every deploy gets:
 
-On Incus, bare Docker Hub refs go through the OCI remote pointing at
-`docker.io`, and `registry.host/...` refs through the OCI remote whose URL
-matches that host. Remotes are host setup and are never added automatically:
+- one **routed** service with the `cep.proxy.port` label. For presets and
+  image refs this is `--proxy-port`, or the first `--port` by default.
+- a `container_name` for the routed service, `cep-app-<name>` unless your
+  compose file sets one.
+- every service on the external `cep` network, plus the `cep.app=true`
+  label (and `cep.preset=<name>` for presets).
 
-```sh
-incus remote add docker https://docker.io --protocol=oci
-incus remote add ghcr https://ghcr.io --protocol=oci   # one per extra registry
-```
-
-Named volumes (`--volume data:/data`) become custom volumes in the `default`
-storage pool, created on first use. Mount sources must be absolute host paths
-or volume names.
-
-## Running with Incus
-
-The `cep-appstore` container has no Incus client, so run the app store on the
-Incus host instead:
-
-```sh
-CEP_APP_RUNTIME=incus uv run cep apps run
-```
+User compose files may define several services, but exactly one of them must
+carry the `cep.proxy.port` label (or pass `--proxy-port` for a single-service
+file). The app name defaults to the routed service's name (`--name` overrides
+it). `--port`, `--env`, `--volume` and `--privileged` don't combine with a
+compose file; edit the file instead.
 
 TODO for v0.2:
  - Better logging

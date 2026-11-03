@@ -19,6 +19,7 @@ delete:
 - Removes host from DB
 - Calls remove_host_from_dns with the host name
 - Returns 404 for an unknown host
+- Returns 404 for an unknown network
 
 show:
 - Returns all HostRecord fields exactly as stored
@@ -31,10 +32,16 @@ _sign:
 - Calls nebula-cert sign with the correct arguments
 - Writes the public key to a temp file before calling nebula-cert
 - Returns a SignedCertificate whose cert_path and ca_cert_path exist
+- Raises 404 for an unknown network
+- Raises 404 for an unknown host
+- Raises 400 (with nebula-cert stderr) when signing fails
+- Raises 500 before invoking nebula-cert when the CA files are missing
+- The /sign endpoint surfaces signing failures as 400 instead of a bare 500
 """
 from __future__ import annotations
 
 import ipaddress
+import subprocess
 import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch, call
@@ -47,7 +54,7 @@ from cep.datamodels import (
     NetworkRecord,
     NetworkStore,
 )
-from cep.server.utils import load_db, save_db
+from cep.server.db import load_db, save_db
 from cep.server.host import _sign
 from tests.conftest import seed_network
 
@@ -65,7 +72,7 @@ def _seed_host(
     public_ip: str = "1.2.3.4",
 ) -> HostRecord:
     """Add a host to an existing (or new) network in the DB."""
-    from cep.server.utils import load_db, save_db
+    from cep.server.db import load_db, save_db
 
     store = load_db()
     if network_name not in store.networks:
@@ -204,6 +211,11 @@ class TestHostDelete:
         resp = api.delete("/host/delete", params={"network_name": "testnet", "host_name": "ghost"})
         assert resp.status_code == 404
 
+    def test_returns_404_for_unknown_network(self, api, server_dir):
+        resp = api.delete("/host/delete", params={"network_name": "ghost", "host_name": "lh1"})
+        assert resp.status_code == 404
+        assert "ghost" in resp.json()["detail"]
+
 
 # ---------------------------------------------------------------------------
 # /host/show
@@ -276,7 +288,7 @@ class TestSign:
         with patch("cep.server.host.get_executable_path", return_value="/fake/nebula-cert"), \
              patch("cep.server.host.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            _sign(req)
+            _sign(req, load_db())
 
         args = mock_run.call_args[0][0]
         assert args[0] == "/fake/nebula-cert"
@@ -302,7 +314,7 @@ class TestSign:
              patch("cep.server.host.subprocess.run") as mock_run, \
              patch("builtins.open", side_effect=_capturing_open):
             mock_run.return_value = MagicMock(returncode=0)
-            _sign(req)
+            _sign(req, load_db())
 
         assert len(written_paths) == 1, "Expected exactly one .pub file to be written"
         assert written_paths[0].suffix == ".pub"
@@ -313,7 +325,93 @@ class TestSign:
         with patch("cep.server.host.get_executable_path", return_value="/fake/nebula-cert"), \
              patch("cep.server.host.subprocess.run") as mock_run:
             mock_run.return_value = MagicMock(returncode=0)
-            result = _sign(req)
+            result = _sign(req, load_db())
 
         assert result.ca_cert_path == net_dir / "ca.crt"
         assert result.cert_path.name == "node1.crt"
+
+    def test_raises_404_for_unknown_network(self, server_dir):
+        from fastapi.exceptions import HTTPException
+
+        req = CertificateRequest(
+            network_name="ghost",
+            host_name="node1",
+            pub_key="-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----",
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            _sign(req, load_db())
+        assert exc_info.value.status_code == 404
+
+    def test_raises_404_for_unknown_host(self, server_dir):
+        from fastapi.exceptions import HTTPException
+
+        seed_network(server_dir, name="testnet")
+
+        req = CertificateRequest(
+            network_name="testnet",
+            host_name="ghost",
+            pub_key="-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----",
+        )
+        with pytest.raises(HTTPException) as exc_info:
+            _sign(req, load_db())
+        assert exc_info.value.status_code == 404
+
+    def test_raises_400_on_signing_failure(self, server_dir):
+        from fastapi.exceptions import HTTPException
+
+        net_dir, req = self._setup(server_dir)
+        error = subprocess.CalledProcessError(1, cmd=["nebula-cert"], stderr="bad pubkey")
+
+        with patch("cep.server.host.get_executable_path", return_value="/fake/nebula-cert"), \
+             patch("cep.server.host.subprocess.run", side_effect=error), \
+             pytest.raises(HTTPException) as exc_info:
+            _sign(req, load_db())
+
+        assert exc_info.value.status_code == 400
+        assert "bad pubkey" in exc_info.value.detail
+
+    def test_raises_500_when_ca_files_missing(self, server_dir):
+        from fastapi.exceptions import HTTPException
+
+        seed_network(server_dir, name="testnet")
+        _seed_host(server_dir, host_name="node1")
+        # intentionally no ca.crt/ca.key written
+
+        req = CertificateRequest(
+            network_name="testnet",
+            host_name="node1",
+            pub_key="-----BEGIN PUBLIC KEY-----\nfake\n-----END PUBLIC KEY-----",
+        )
+        with patch("cep.server.host.subprocess.run") as mock_run, \
+             pytest.raises(HTTPException) as exc_info:
+            _sign(req, load_db())
+
+        assert exc_info.value.status_code == 500
+        mock_run.assert_not_called(), "nebula-cert must not run when CA files are missing"
+
+    def test_sign_endpoint_returns_400_on_signing_failure(self, api, server_dir):
+        net_dir, req = self._setup(server_dir)
+        error = subprocess.CalledProcessError(1, cmd=["nebula-cert"], stderr="bad pubkey")
+
+        with patch("cep.server.host.get_executable_path", return_value="/fake/nebula-cert"), \
+             patch("cep.server.host.subprocess.run", side_effect=error):
+            resp = api.post("/host/sign", json=req.model_dump(mode="json"))
+
+        assert resp.status_code == 400
+        assert "bad pubkey" in resp.json()["detail"]
+
+    def test_sign_endpoint_returns_404_for_unknown_network(self, api, server_dir):
+        resp = api.post(
+            "/host/sign",
+            json={"network_name": "ghost", "host_name": "node1", "pub_key": "fake"},
+        )
+        assert resp.status_code == 404
+
+    def test_sign_endpoint_returns_404_for_unknown_host(self, api, server_dir):
+        seed_network(server_dir, name="testnet")
+
+        resp = api.post(
+            "/host/sign",
+            json={"network_name": "testnet", "host_name": "ghost", "pub_key": "fake"},
+        )
+        assert resp.status_code == 404

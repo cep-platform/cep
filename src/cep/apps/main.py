@@ -1,132 +1,153 @@
-from typing import Optional
+from __future__ import annotations
 
-from fastapi import Depends, FastAPI, HTTPException, Request
-from fastapi.responses import JSONResponse
+import requests
+from contextlib import asynccontextmanager
+from enum import Enum
+from time import sleep
+from uuid import uuid4
 
-from cep.apps.runtime import CommandFailed, Runtime, get_runtime
-from cep.apps.spec import AppSpec, AppStatus, DeployRequest, InvalidSpec, resolve
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Response
+from pydantic import BaseModel, Field
+
+from cep.apps.incus import ComposeConfig, Incus
+from cep.apps.caddy import CaddyReverseProxy
+from cep.apps.spec import NAME_RE
 from cep.apps.store import store_router
-from cep.storage.docker import Pool, Volume, list_pools, list_all_volumes
 
-app = FastAPI()
+
+CADDY_INIT_ATTEMPTS = 3
+CADDY_INIT_RETRY_DELAY = 9.0
+
+
+#TODO: ensure_caddy should be implemented through incus-compose rather than
+# being part of the application logic
+def _init_caddy_with_retry() -> None:
+    for attempt in range(1, CADDY_INIT_ATTEMPTS + 1):
+        try:
+            CaddyReverseProxy.ensure_initialized()
+            return
+        except requests.exceptions.RequestException:
+            if attempt == CADDY_INIT_ATTEMPTS:
+                raise
+            sleep(CADDY_INIT_RETRY_DELAY)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    _init_caddy_with_retry()
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 app.include_router(store_router)
 
 
-@app.exception_handler(InvalidSpec)
-def _invalid_spec(_: Request, e: InvalidSpec):
-    return JSONResponse(status_code=422, content={"detail": str(e)})
+class AppInstallRequest(BaseModel):
+    """Deploy `compose` as app `id`. cep-main renders the compose file from a
+    preset, an image ref or a user file (cep.apps.compose)."""
+
+    id: str = Field(pattern=NAME_RE)  # also the deployment dir name
+    compose: ComposeConfig
 
 
-@app.exception_handler(CommandFailed)
-def _command_failed(_: Request, e: CommandFailed):
-    return JSONResponse(status_code=500, content={"detail": e.stderr})
+class JobState(str, Enum):
+    """Lifecycle of an install job (POST / -> GET /jobs/{job_id})."""
+
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
 
 
+class JobStatus(BaseModel):
+    id: str
+    state: JobState
+    result: ComposeConfig | None = None
+    error: str | None = None
+
+
+class AppInstallAccepted(BaseModel):
+    job_id: str
+    status: JobState = JobState.RUNNING
+
+
+# Install jobs live in memory only (single-worker appstore): a restart
+# forgets running/done jobs and a client polling a forgotten job id gets a
+# 404. Acceptable for Phase 1 - the deployed instances live in incus, not
+# in this process.
+JOBS: dict[str, JobStatus] = {}
+
+
+def _run_install_job(
+        job_id: str,
+        app_id: str,
+        app_template: ComposeConfig,
+        ) -> None:
+    """
+    Background body of POST /: run the slow incus-compose deployment and
+    record the outcome in JOBS. Must never raise - a failure is data
+    (state=failed + error) so pollers can see it, not a server exception.
+    """
+    try:
+        Incus.add_to_deployment(app_id, app_template)
+        Incus.compose_up(app_id)
+    except Exception as e:
+        JOBS[job_id] = JobStatus(id=job_id, state=JobState.FAILED, error=str(e))
+        return
+    JOBS[job_id] = JobStatus(id=job_id, state=JobState.DONE, result=app_template)
+
+
+# Liveness probe for the incus-compose healthcheck (compose.yml).
 @app.get("/health")
-def health():
-    """Liveness check; always returns "ok"."""
-    return "ok"
+async def health() -> dict[str, str]:
+    return {"status": "ok"}
 
 
-@app.post("/deploy")
-def _deploy(req: DeployRequest, runtime: Runtime = Depends(get_runtime)) -> AppSpec:
-    """Deploy a preset or any image ref (with optional overrides); returns the deployed spec."""
-    spec = resolve(req)
-    runtime.deploy(spec)
-    return spec
+@app.get("/")
+async def list_apps():
+    return Incus.list_()
 
 
-@app.get("/list")
-def _list(runtime: Runtime = Depends(get_runtime)) -> list[AppStatus]:
-    """Apps deployed through the app store, with their live state."""
-    return runtime.list()
+# Registered above the /{app_id} catch-all; known routes first is the
+# safe default (see the /health regression note in the tests).
+@app.get("/jobs/{job_id}", response_model=JobStatus)
+async def get_job(job_id: str) -> JobStatus:
+    """Poll target for POST /: the job's state and, when done, the app
+    compose file as result."""
+    job = JOBS.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found")
+    return job
 
 
-@app.delete("/targetedDestroy")
-def _destroy(name: str, runtime: Runtime = Depends(get_runtime)):
-    """Destroy one app. 404 for anything the app store did not deploy."""
-    if name not in {a.name for a in runtime.list()}:
-        raise HTTPException(status_code=404, detail=f"no app named '{name}'")
-    runtime.destroy(name)
+@app.get("/{app_id}")
+async def get_app(app_id: str):
+    return Incus.info(app_id=app_id)
 
 
-@app.delete("/clear")
-def _clear(runtime: Runtime = Depends(get_runtime)) -> list[str]:
-    """Destroy every app deployed through the app store; returns their names."""
-    names = [a.name for a in runtime.list()]
-    for name in names:
-        runtime.destroy(name)
-    return names
+@app.post("/", response_model=AppInstallAccepted, status_code=202)
+async def install_app(
+        request: AppInstallRequest,
+        background_tasks: BackgroundTasks,
+        ) -> AppInstallAccepted:
+    """
+    Non-blocking install: the request body is validated synchronously
+    (422), the incus-compose deployment runs as a background job and the
+    202 + job_id returns immediately; poll GET /jobs/{job_id} for the
+    outcome.
+    """
+    job_id = uuid4().hex
+    JOBS[job_id] = JobStatus(id=job_id, state=JobState.RUNNING)
+    # Sync task -> starlette runs it in the threadpool, so the blocking
+    # incus-compose subprocess never blocks the event loop.
+    background_tasks.add_task(_run_install_job, job_id, request.id, request.compose)
+    return AppInstallAccepted(job_id=job_id, status=JobState.RUNNING)
 
 
-# ---------------------------------------------------------------------------
-# Storage endpoints - filesystem operations on host bind mount
-# ---------------------------------------------------------------------------
-
-
-@app.get("/storage/pools")
-def storage_list_pools():
-    return list_pools()
-
-
-@app.post("/storage/pools/create")
-def storage_create_pool(name: str):
-    try:
-        result = Pool(name).create()
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-
-@app.delete("/storage/pools/delete")
-def storage_delete_pool(name: str):
-    try:
-        Pool(name).delete()
-        return {"status": "deleted", "name": name}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.get("/storage/pools/stats")
-def storage_pool_stats(name: str):
-    try:
-        return Pool(name).get_stats()
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.get("/storage/volumes")
-def storage_list_volumes(pool_name: Optional[str] = None):
-    if pool_name:
-        try:
-            return Pool(pool_name).list_volumes()
-        except ValueError as e:
-            raise HTTPException(status_code=404, detail=str(e))
-    return list_all_volumes()
-
-
-@app.post("/storage/volumes/create")
-def storage_create_volume(pool_name: str, name: str):
-    try:
-        result = Volume(pool_name, name).create()
-        return result
-    except ValueError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-
-
-@app.delete("/storage/volumes/delete")
-def storage_delete_volume(pool_name: str, name: str):
-    try:
-        Volume(pool_name, name).delete()
-        return {"status": "deleted", "pool_name": pool_name, "name": name}
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-@app.get("/storage/volumes/stats")
-def storage_volume_stats(pool_name: str, name: str):
-    try:
-        return Volume(pool_name, name).info()
-    except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
+@app.delete("/{app_id}", status_code=204)
+async def uninstall_app(
+    app_id: str,
+    remove_data: bool = False,
+) -> Response:
+    Incus.compose_down(app_id=app_id)
+    Incus.remove_from_deployment(app_id=app_id)
+    return Response(status_code=204)

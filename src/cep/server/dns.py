@@ -2,25 +2,16 @@ import os
 from ipaddress import IPv6Address
 
 import httpx
-from fastapi import APIRouter, Response, HTTPException, Body
+from fastapi import APIRouter, Response, HTTPException, Body, Depends
 
-from cep.datamodels import AddAAAARequest
-from cep.server.utils import load_db
+from cep.datamodels import AddAAAARequest, NetworkStore
+from cep.server.db import get_network_store
 
 dns_router = APIRouter(prefix="/dns")
 
 hostname = os.environ.get("DNS_IP", "localhost")
-dns_token = os.environ.get("DNS_TOKEN", None)
 base_url = f"http://{hostname}:8053"
-if dns_token:
-    client = httpx.Client(
-                    base_url=base_url,
-                    headers={
-                        "Authorization": f"Bearer {dns_token}",
-                        },
-                    )
-else:
-    client = httpx.Client(base_url=base_url)
+client = httpx.Client(base_url=base_url)
 
 
 def start_dns(subnet: str):
@@ -54,9 +45,7 @@ def is_valid_ipv6(address: str) -> bool:
 
 
 @dns_router.post("/start")
-def start(network_name: str = Body(..., embed=True)):
-    network_store = load_db()
-
+def start(network_name: str = Body(..., embed=True), network_store: NetworkStore = Depends(get_network_store)):
     network_record = network_store.networks.get(network_name, None)
     if not network_record:
         raise HTTPException(

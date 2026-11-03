@@ -1,90 +1,558 @@
-"""Tests for the app-store endpoints, against an in-memory runtime."""
+"""
+Tests for the /apps deploy and destroy proxy endpoints.
+
+deployProxy:
+- Happy path submits an appstore job, polls it, then wires reverse
+  proxy + DNS record + AppRecord into the DB
+- Reverse proxy dial target comes from the job result's container_name
+- 404 for an unknown network
+- 409 when the app is already deployed in the network
+- 409 when the network has no cep host
+- Appstore errors on submit propagate; DB stays untouched
+- 502 when the appstore is unreachable on submit or while polling
+- 502 when the appstore job reports the deploy as failed; nothing wired
+- 504 when the job is still running after the poll timeout; nothing wired
+- 500 when the job result lacks container_name / proxy-port label
+- 500 when the job result has more than one routed service
+- Image refs and user compose files deploy under their resolved name;
+  the 409 check uses that name
+- 422 for a request that cannot be rendered; nothing reaches the appstore
+- 502 when the reverse proxy is unreachable
+
+targetedDestroyProxy:
+- Happy path removes reverse proxy route + DNS record + AppRecord
+- Destroy removes exactly the route that deploy added (hostname symmetry)
+- 404 for an unknown network or an app that is not deployed
+- Appstore errors propagate; no cleanup happens
+- 502 when the reverse proxy is unreachable; DB stays untouched
+
+All HTTP is stubbed via conftest fixtures (mock_appstore, mock_rproxy).
+"""
 from __future__ import annotations
 
+import ipaddress
+
+import httpx
 import pytest
-from fastapi.testclient import TestClient
+import requests
 
-from cep.apps.main import app
-from cep.apps.runtime import CommandFailed, get_runtime
-from cep.apps.spec import AppSpec, AppStatus
-
-
-class FakeRuntime:
-    def __init__(self):
-        self.apps: dict[str, AppSpec] = {}
-        self.destroyed: list[str] = []
-        self.fail_with: Exception | None = None
-
-    def deploy(self, spec: AppSpec) -> None:
-        if self.fail_with:
-            raise self.fail_with
-        self.apps[spec.name] = spec
-
-    def destroy(self, name: str) -> None:
-        self.apps.pop(name)
-        self.destroyed.append(name)
-
-    def list(self) -> list[AppStatus]:
-        return [AppStatus(name=s.name, image=s.image, state="running", preset=s.preset)
-                for s in self.apps.values()]
+from cep.datamodels import AppRecord, HostRecord
+from cep.server.db import load_db, save_db
+from tests.conftest import FakeAppstoreResponse, seed_network
 
 
-@pytest.fixture()
-def fake():
-    return FakeRuntime()
+CEP_HOST_IP = "fd12:3456:789a:1::1"
 
 
-@pytest.fixture()
-def client(fake):
-    app.dependency_overrides[get_runtime] = lambda: fake
-    yield TestClient(app)
-    app.dependency_overrides.clear()
+def _seed_cep_host(network_name: str = "testnet", host_name: str = "cep") -> None:
+    """Add the network's first host (::1) directly into the DB."""
+    store = load_db()
+    store.networks[network_name].hosts[host_name] = HostRecord(
+        name=host_name,
+        ip=ipaddress.ip_address(CEP_HOST_IP),
+        groups=[],
+        is_lighthouse=False,
+    )
+    save_db(store)
 
 
-def test_deploy_preset_and_list(client, fake):
-    r = client.post("/deploy", json={"target": "redis"})
-    assert r.status_code == 200 and fake.apps["redis"].preset == "redis"
-    assert client.get("/list").json() == [
-        {"name": "redis", "image": "redis:7-alpine", "state": "running", "preset": "redis"}
-    ]
+def _seed_deployed_app(
+    network_name: str = "testnet",
+    app_name: str = "redis",
+) -> None:
+    """Mark an app as deployed in the network's DB record."""
+    store = load_db()
+    store.networks[network_name].apps[app_name] = AppRecord(
+        name=app_name,
+        ip=ipaddress.ip_address(CEP_HOST_IP),
+    )
+    save_db(store)
 
 
-def test_deploy_image_with_overrides(client, fake):
-    r = client.post("/deploy", json={"target": "ghcr.io/foo/bar:1.0",
-                                     "ports": [{"host": 8080, "container": 80}]})
-    assert r.status_code == 200 and r.json()["name"] == "bar"
-    assert fake.apps["bar"].ports[0].host == 8080
+def _dns_recorder(monkeypatch: pytest.MonkeyPatch, calls: list) -> None:
+    monkeypatch.setattr(
+        "cep.server.apps.add_host_to_dns",
+        lambda req: calls.append(req),
+    )
+    monkeypatch.setattr(
+        "cep.server.apps.remove_host_from_dns",
+        lambda name: calls.append(name),
+    )
 
 
-def test_deploy_invalid_is_422_and_nothing_deployed(client, fake):
-    r = client.post("/deploy", json={"target": "images:debian/12"})
-    assert r.status_code == 422 and "--name" in r.json()["detail"]
-    assert fake.apps == {}
+# ---------------------------------------------------------------------------
+# /apps/deployProxy
+# ---------------------------------------------------------------------------
+
+class TestDeployProxy:
+    def test_happy_path_wires_rproxy_dns_and_db(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        dns_calls = []
+        _dns_recorder(monkeypatch, dns_calls)
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 200
+        [(path, _, install)] = mock_appstore.deploy_calls
+        assert path == "/"
+        assert install["id"] == "redis"
+        assert install["compose"]["services"]["redis"]["image"] == "redis:7-alpine", (
+            "the preset is rendered to compose before it reaches the appstore"
+        )
+        assert mock_appstore.poll_calls == [("/jobs/job-1", None)], (
+            "deploy must poll the job until done"
+        )
+        assert resp.json()["services"]["redis"]["container_name"] == "cep-app-redis"
+        assert mock_rproxy.added == [("redis.cep.testnet", "cep-app-redis:6379")], (
+            "dial target must be container_name:proxy_port from the template"
+        )
+        assert len(dns_calls) == 1
+        assert dns_calls[0].name == "redis.cep.testnet"
+        assert dns_calls[0].ip == CEP_HOST_IP
+        store = load_db()
+        app = store.networks["testnet"].apps["redis"]
+        assert app.name == "redis"
+        assert app.ip == ipaddress.ip_address(CEP_HOST_IP)
+
+    def test_returns_404_for_unknown_network(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "ghost"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 404
+        assert mock_appstore.deploy_calls == []
+        assert mock_rproxy.added == []
+
+    def test_returns_409_when_app_already_deployed(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _seed_deployed_app()
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 409
+        assert "already deployed" in resp.json()["detail"]
+        assert mock_appstore.deploy_calls == []
+
+    def test_returns_409_when_network_has_no_cep_host(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        seed_network(server_dir, name="testnet")
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 409
+        assert "no cep host" in resp.json()["detail"]
+        assert mock_appstore.deploy_calls == []
+
+    def test_appstore_error_propagates_and_db_unchanged(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        mock_appstore.deploy_response = FakeAppstoreResponse(
+            status_code=404,
+            json_data={"detail": "App 'redis' not found in template path"},
+        )
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 404
+        assert resp.json()["detail"] == "App 'redis' not found in template path"
+        assert mock_rproxy.added == []
+        assert load_db().networks["testnet"].apps == {}
+
+    def test_returns_500_when_job_result_misses_proxy_metadata(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        mock_appstore.job_response = FakeAppstoreResponse(
+            json_data={
+                "id": "job-1",
+                "state": "done",
+                "result": {"services": {"redis": {"image": "redis:7"}}},
+            }
+        )
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 500
+        assert "cep.proxy.port" in resp.json()["detail"]
+        assert mock_rproxy.added == []
+        assert load_db().networks["testnet"].apps == {}
+
+    def test_returns_500_when_job_result_has_multiple_services(
+        self, api, server_dir, mock_appstore
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        mock_appstore.job_response = FakeAppstoreResponse(
+            json_data={
+                "id": "job-1",
+                "state": "done",
+                "result": {
+                    "services": {
+                        "redis": {
+                            "container_name": "cep-app-redis",
+                            "labels": {"cep.proxy.port": "6379"},
+                        },
+                        "sidecar": {
+                            "container_name": "cep-app-sidecar",
+                            "labels": {"cep.proxy.port": "80"},
+                        },
+                    }
+                },
+            }
+        )
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 500
+        assert "exactly one service" in resp.json()["detail"]
+
+    def test_deploys_an_image_ref_under_the_derived_name(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _dns_recorder(monkeypatch, [])
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "ghcr.io/foo/whoami:1", "ports": [{"host": 8000, "container": 80}]},
+        )
+
+        assert resp.status_code == 200
+        [(_, _, install)] = mock_appstore.deploy_calls
+        assert install["id"] == "whoami"
+        assert install["compose"]["services"]["whoami"]["labels"]["cep.proxy.port"] == "80"
+        assert "whoami" in load_db().networks["testnet"].apps
+
+    def test_deploys_a_user_compose_file(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _dns_recorder(monkeypatch, [])
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"compose": {"services": {"web": {"image": "nginx"}}}, "proxy_port": 80},
+        )
+
+        assert resp.status_code == 200
+        [(_, _, install)] = mock_appstore.deploy_calls
+        web = install["compose"]["services"]["web"]
+        assert install["id"] == "web"
+        assert web["container_name"] == "cep-app-web"
+        assert install["compose"]["networks"]["cep"] == {"name": "cep", "external": True}
+
+    def test_409_uses_the_resolved_app_name(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        """The python preset deploys as python-app; that is the name to check."""
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _seed_deployed_app(app_name="python-app")
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "python"},
+        )
+
+        assert resp.status_code == 409
+        assert mock_appstore.deploy_calls == []
+
+    @pytest.mark.parametrize("body", [
+        {},
+        {"target": "ghcr.io/foo/My_App"},
+        {"compose": {"services": {"web": {"image": "nginx"}}}},
+    ])
+    def test_returns_422_for_an_undeployable_request(
+        self, api, server_dir, mock_appstore, mock_rproxy, body
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+
+        resp = api.post("/apps/deployProxy", params={"network_name": "testnet"}, json=body)
+
+        assert resp.status_code == 422
+        assert mock_appstore.deploy_calls == []
+
+    def test_returns_502_when_rproxy_unreachable(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        mock_rproxy.error = requests.exceptions.ConnectionError("caddy down")
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 502
+        assert load_db().networks["testnet"].apps == {}
+
+    def test_returns_502_when_appstore_unreachable(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        mock_appstore.deploy_error = httpx.ConnectError("appstore down")
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 502
+        assert mock_rproxy.added == []
+        assert load_db().networks["testnet"].apps == {}
+
+    def test_returns_502_when_appstore_unreachable_during_poll(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        """The appstore can disappear between submit and poll."""
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        mock_appstore.job_error = httpx.ConnectError("appstore down")
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 502
+        assert "appstore down" in resp.json()["detail"]
+        assert mock_rproxy.added == []
+        assert load_db().networks["testnet"].apps == {}
+
+    def test_returns_502_when_job_failed(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        """A failed job means nothing gets wired - no half-deployed state."""
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        dns_calls = []
+        _dns_recorder(monkeypatch, dns_calls)
+        mock_appstore.job_response = FakeAppstoreResponse(
+            json_data={
+                "id": "job-1",
+                "state": "failed",
+                "result": None,
+                "error": "incus-compose up failed: no space left on device",
+            }
+        )
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 502
+        assert "no space left on device" in resp.json()["detail"]
+        assert mock_rproxy.added == []
+        assert dns_calls == []
+        assert load_db().networks["testnet"].apps == {}
+
+    def test_returns_504_when_job_does_not_finish_in_time(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        """A job still running after the poll deadline times out with an
+        actionable message and wires nothing."""
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        dns_calls = []
+        _dns_recorder(monkeypatch, dns_calls)
+        monkeypatch.setattr("cep.server.apps.DEPLOY_POLL_TIMEOUT", 0.0)
+        mock_appstore.job_response = FakeAppstoreResponse(
+            json_data={"id": "job-1", "state": "running"}
+        )
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+
+        assert resp.status_code == 504
+        assert "did not finish" in resp.json()["detail"]
+        assert mock_rproxy.added == []
+        assert dns_calls == []
+        assert load_db().networks["testnet"].apps == {}
 
 
-def test_command_failure_is_500_with_stderr(client, fake):
-    fake.fail_with = CommandFailed(["docker"], "name already in use")
-    r = client.post("/deploy", json={"target": "redis"})
-    assert r.status_code == 500 and "already in use" in r.json()["detail"]
+# ---------------------------------------------------------------------------
+# /apps/targetedDestroyProxy
+# ---------------------------------------------------------------------------
+
+class TestTargetedDestroyProxy:
+    def test_happy_path_removes_rproxy_dns_and_record(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _seed_deployed_app()
+        dns_calls = []
+        _dns_recorder(monkeypatch, dns_calls)
+
+        resp = api.delete(
+            "/apps/targetedDestroyProxy",
+            params={"name": "redis", "network_name": "testnet"},
+        )
+
+        assert resp.status_code == 200
+        assert mock_appstore.destroy_calls == [("/redis", None)]
+        assert mock_rproxy.removed == ["redis.cep.testnet"]
+        assert dns_calls == ["redis.cep.testnet"]
+        assert "redis" not in load_db().networks["testnet"].apps
+
+    def test_destroy_removes_the_route_deploy_added(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        """Regression: deploy and destroy must use the same hostname."""
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        dns_calls = []
+        _dns_recorder(monkeypatch, dns_calls)
+
+        api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
+        )
+        api.delete(
+            "/apps/targetedDestroyProxy",
+            params={"name": "redis", "network_name": "testnet"},
+        )
+
+        added_hostnames = [hostname for hostname, _ in mock_rproxy.added]
+        assert mock_rproxy.removed == added_hostnames
+        assert dns_calls[-1] == added_hostnames[0]
+
+    def test_returns_404_for_unknown_network(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        resp = api.delete(
+            "/apps/targetedDestroyProxy",
+            params={"name": "redis", "network_name": "ghost"},
+        )
+
+        assert resp.status_code == 404
+        assert mock_appstore.destroy_calls == []
+        assert mock_rproxy.removed == []
+
+    def test_returns_404_when_app_not_deployed(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+
+        resp = api.delete(
+            "/apps/targetedDestroyProxy",
+            params={"name": "redis", "network_name": "testnet"},
+        )
+
+        assert resp.status_code == 404
+        assert "not deployed" in resp.json()["detail"]
+        assert mock_appstore.destroy_calls == []
+
+    def test_appstore_error_propagates_and_no_cleanup(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _seed_deployed_app()
+        dns_calls = []
+        _dns_recorder(monkeypatch, dns_calls)
+        mock_appstore.destroy_response = FakeAppstoreResponse(
+            status_code=500,
+            json_data={"detail": "docker daemon lost"},
+        )
+
+        resp = api.delete(
+            "/apps/targetedDestroyProxy",
+            params={"name": "redis", "network_name": "testnet"},
+        )
+
+        assert resp.status_code == 500
+        assert resp.json()["detail"] == "docker daemon lost"
+        assert mock_rproxy.removed == []
+        assert dns_calls == []
+        assert "redis" in load_db().networks["testnet"].apps
+
+    def test_returns_502_when_rproxy_unreachable(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _seed_deployed_app()
+        dns_calls = []
+        _dns_recorder(monkeypatch, dns_calls)
+        mock_rproxy.error = requests.exceptions.ConnectionError("caddy down")
+
+        resp = api.delete(
+            "/apps/targetedDestroyProxy",
+            params={"name": "redis", "network_name": "testnet"},
+        )
+
+        assert resp.status_code == 502
+        assert dns_calls == []
+        assert "redis" in load_db().networks["testnet"].apps
 
 
-def test_targeted_destroy(client, fake):
-    client.post("/deploy", json={"target": "redis"})
-    assert client.delete("/targetedDestroy", params={"name": "redis"}).status_code == 200
-    assert fake.destroyed == ["redis"]
+# ---------------------------------------------------------------------------
+# /health
+# ---------------------------------------------------------------------------
 
+class TestHealth:
+    def test_health_returns_ok(self, api, server_dir):
+        """compose.yml's healthcheck probes /health from inside the
+        container; a 200 is what lets `incus-compose up` (healthd enabled)
+        consider cep-main started and detach."""
+        resp = api.get("/health")
 
-def test_targeted_destroy_unknown_is_404(client, fake):
-    assert client.delete("/targetedDestroy", params={"name": "cep-appstore"}).status_code == 404
-    assert fake.destroyed == []
-
-
-def test_clear_destroys_only_listed_apps(client, fake):
-    client.post("/deploy", json={"target": "redis"})
-    client.post("/deploy", json={"target": "nginx"})
-    assert sorted(client.delete("/clear").json()) == ["nginx", "redis"]
-    assert fake.apps == {}
-
-
-def test_store_list(client):
-    assert "redis" in client.get("/store/list").json()
+        assert resp.status_code == 200
+        assert resp.json() == {"status": "ok"}

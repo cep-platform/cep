@@ -1,4 +1,4 @@
-"""Runtime-neutral description of an app, and how users and presets produce one."""
+"""Description of a single-container app, and how users and presets produce one."""
 from __future__ import annotations
 
 import re
@@ -12,8 +12,6 @@ PRESETS_PACKAGE = "cep.apps.presets"
 
 NAME_RE = r"^[a-z][a-z0-9-]{0,62}$"
 VOLUME_NAME_RE = r"^[A-Za-z0-9][A-Za-z0-9_.-]*$"
-INCUS_NATIVE_REMOTES = frozenset({"images", "ubuntu", "ubuntu-daily"})
-KNOWN_REMOTE_PREFIXES = INCUS_NATIVE_REMOTES | {"docker"}
 
 
 class InvalidSpec(ValueError):
@@ -45,16 +43,15 @@ class Mount(BaseModel):
 
 class AppSpec(BaseModel):
     name: str
-    image: str  # raw ref, interpreted by the runtime
+    image: str  # OCI ref, resolved like Docker does (bare names -> docker.io)
     ports: list[Port] = []
     env: dict[str, str] = {}
     mounts: list[Mount] = []
-    # Docker: replaces the image's CMD, keeping its ENTRYPOINT. Incus: becomes
-    # oci.entrypoint, replacing ENTRYPOINT + CMD, so entrypoint init scripts are skipped.
-    command: list[str] | None = None
+    command: list[str] | None = None  # replaces the image's CMD
     workdir: str | None = None
     restart: bool = True
     privileged: bool = False
+    proxy_port: int | None = None  # container port the reverse proxy routes to
     preset: str | None = None  # set by preset resolution, not by users
 
     @field_validator("name")
@@ -64,23 +61,26 @@ class AppSpec(BaseModel):
             raise ValueError(f"app name '{v}' must match {NAME_RE}")
         return v
 
-
-class AppStatus(BaseModel):
-    name: str
-    image: str
-    state: str
-    preset: str | None = None
+    @property
+    def route_port(self) -> int | None:
+        """`proxy_port`, else the first published container port."""
+        if self.proxy_port is not None:
+            return self.proxy_port
+        return self.ports[0].container if self.ports else None
 
 
 class DeployRequest(BaseModel):
-    """A preset name or image ref, plus optional overrides (None = not provided)."""
+    """What to deploy - a preset name or image ref (`target`), or a user compose
+    file (`compose`) - plus optional overrides (None = not provided)."""
 
-    target: str
+    target: str | None = None
+    compose: dict | None = None
     name: str | None = None
     ports: list[Port] | None = None
     env: dict[str, str] | None = None
     mounts: list[Mount] | None = None
     privileged: bool | None = None
+    proxy_port: int | None = None
 
 
 def parse_port(s: str) -> Port:
@@ -131,11 +131,7 @@ def load_preset(name: str) -> AppSpec:
 
 def default_name(ref: str) -> str:
     """Derive an app name from an image ref: `ghcr.io/foo/bar:1.0` -> `bar`."""
-    rest = ref.split("@", 1)[0]
-    prefix, sep, after = rest.partition(":")
-    if sep and prefix in KNOWN_REMOTE_PREFIXES:
-        rest = after
-    name = rest.rsplit("/", 1)[-1].split(":", 1)[0]
+    name = ref.split("@", 1)[0].rsplit("/", 1)[-1].split(":", 1)[0]
     if not re.match(NAME_RE, name):
         raise InvalidSpec(f"cannot derive an app name from '{ref}'; pass --name")
     return name
@@ -151,7 +147,7 @@ def resolve(req: DeployRequest) -> AppSpec:
 
         updates = {
             k: v
-            for k, v in req.model_dump(include={"name", "ports", "mounts", "privileged"}).items()
+            for k, v in req.model_dump(include={"name", "ports", "mounts", "privileged", "proxy_port"}).items()
             if v is not None
         }
         if req.env is not None:

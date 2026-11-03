@@ -13,3 +13,14 @@ wheels/
 .cloudboxservercfg
 .env
 *.cepbundle
+
+# Coverage artifacts
+.coverage
+
+# SQLite state stores (dev machines)
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# Image symlinks (nix multi-output builds also produce result-man etc.)
+image/result*

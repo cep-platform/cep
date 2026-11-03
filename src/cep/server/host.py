@@ -3,7 +3,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import FileResponse
 from fastapi.exceptions import HTTPException
 
@@ -14,12 +14,10 @@ from cep.datamodels import (
         HostRequest,
         AddAAAARequest,
         SignedCertificate,
+        NetworkStore,
         )
-from cep.server.utils import (
-        SERVER_DATA_DIR,
-        save_db,
-        load_db,
-        )
+from cep.server.utils import SERVER_DATA_DIR
+from cep.server.db import get_network_store, get_network_store_write
 from cep.server.dns import (
         add_host_to_dns,
         remove_host_from_dns,
@@ -27,10 +25,9 @@ from cep.server.dns import (
 
 host_router = APIRouter(prefix="/host")
 
-#TODO: test_this by creating host with and without dns make sure saving works as expected 
+#TODO: test_this (DONE!!): covered by endpoint tests + TestWriteDependencyEndpoints in test_server_db.py
 @host_router.post("/create")
-def create(request: HostRequest) -> HostRecord:
-    network_store = load_db()
+def create(request: HostRequest, network_store: NetworkStore = Depends(get_network_store_write)) -> HostRecord:
     network_record = network_store.networks.get(request.network_name, None)
 
     if not network_record:
@@ -54,25 +51,28 @@ def create(request: HostRequest) -> HostRecord:
             public_ip=request.public_ip,
             )
 
+    network_record.hosts[request.name] = host_record
+    # No explicit save: the request's write transaction commits for us.
+
     if request.add_dns_record:
         domain_name = f"{request.name}.{network_record.name}"
         aaaa_request = AddAAAARequest(name=domain_name, ip=str(ip))
         add_host_to_dns(aaaa_request)
-
-    network_record.hosts[request.name] = host_record
-    save_db(network_store)
 
     return host_record
 
 
 # TODO: test_this (DONE!!) implicitly with dns api integration tests
 @host_router.delete("/delete")
-def delete(network_name: str, host_name: str):
-    network_store = load_db()
+def delete(network_name: str, host_name: str, network_store: NetworkStore = Depends(get_network_store_write)):
     network_record = network_store.networks.get(network_name, None)
+    if network_record is None:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Network {network_name} not found",
+                )
     try:
         del network_record.hosts[host_name]
-        save_db(network_store)
         remove_host_from_dns(name=host_name)
     except KeyError:
         raise HTTPException(
@@ -84,8 +84,7 @@ def delete(network_name: str, host_name: str):
 
 #TODO: test_this (DONE!!): create dummy database and check if the contents match the spec
 @host_router.get("/show")
-def show(network_name: str, host_name: str) -> HostRecord:
-    network_store = load_db()
+def show(network_name: str, host_name: str, network_store: NetworkStore = Depends(get_network_store)) -> HostRecord:
     network_record = network_store.networks.get(network_name, None)
     if network_record is None:
         raise HTTPException(
@@ -103,13 +102,24 @@ def show(network_name: str, host_name: str) -> HostRecord:
 
 
 #TODO: test_this (DONE!!)
-def _sign(request: CertificateRequest) -> SignedCertificate:
+def _sign(request: CertificateRequest, network_store: NetworkStore) -> SignedCertificate:
     network_name = request.network_name
     host_name = request.host_name
 
-    network_store = load_db()
     network_record = network_store.networks.get(network_name)
+    if network_record is None:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Network {network_name} not found",
+                )
+
     host_record = network_record.hosts.get(host_name)
+    if host_record is None:
+        raise HTTPException(
+                status_code=404,
+                detail=f"Host {host_name} not found in {network_name}",
+                )
+
     ip = f"{host_record.ip}/64"
 
     tempdir = Path(tempfile.TemporaryDirectory(delete=False).name)
@@ -121,18 +131,29 @@ def _sign(request: CertificateRequest) -> SignedCertificate:
 
     ca_cert_path = SERVER_DATA_DIR / network_name / 'ca.crt'
     ca_key_path = SERVER_DATA_DIR / network_name / 'ca.key'
+    if not ca_cert_path.exists() or not ca_key_path.exists():
+        raise HTTPException(
+                status_code=500,
+                detail=f"CA files missing for network '{network_name}'",
+                )
 
     nebula_cert_executable_path = get_executable_path('nebula-cert')
-    subprocess.run([
-        nebula_cert_executable_path,
-        'sign',
-        '-in-pub', pub_key_path,
-        '-name', f'{host_name}.{network_name}',
-        '-ip', ip,
-        '-ca-crt', ca_cert_path,
-        '-ca-key', ca_key_path,
-        '-out-crt', cert_path,
-        ], capture_output=True, text=True)
+    try:
+        subprocess.run([
+            nebula_cert_executable_path,
+            'sign',
+            '-in-pub', pub_key_path,
+            '-name', f'{host_name}.{network_name}',
+            '-ip', ip,
+            '-ca-crt', ca_cert_path,
+            '-ca-key', ca_key_path,
+            '-out-crt', cert_path,
+            ], capture_output=True, text=True, check=True)
+    except subprocess.CalledProcessError as e:
+        raise HTTPException(
+                status_code=400,
+                detail=f"Certificate signing failed: {e.stderr.strip()}",
+                )
 
     return SignedCertificate(
             ca_cert_path=ca_cert_path,
@@ -142,8 +163,8 @@ def _sign(request: CertificateRequest) -> SignedCertificate:
 
 
 @host_router.post("/sign")
-def sign(request: CertificateRequest):
-    signed_certificate = _sign(request)
+def sign(request: CertificateRequest, network_store: NetworkStore = Depends(get_network_store)):
+    signed_certificate = _sign(request, network_store)
     cert_path = signed_certificate.cert_path
     ca_cert_path = signed_certificate.ca_cert_path
 

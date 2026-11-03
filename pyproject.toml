@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "cep"
 version = "0.1.0"
@@ -14,6 +18,7 @@ dependencies = [
     "rich>=14.2.0",
     "typer>=0.20.0",
     "result", #last version as this is not maintained anymore
+    "requests>=2.33.1", # floor = nixos-26.05; usage is plain get/post/exceptions
 ]
 
 [dependency-groups]

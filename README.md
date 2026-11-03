@@ -1,12 +1,12 @@
 # Cep
 
-Cep is an application for securely deploying web apps on a server. It creates and manages [Nebula](https://github.com/slackhq/nebula) peer-to-peer VPN networks and deploys Docker containers for web applications.
+Cep is an application for securely deploying web apps on a server. It creates and manages [Nebula](https://github.com/slackhq/nebula) peer-to-peer VPN networks and deploys [Incus](https://linuxcontainers.org/incus/) containers (via [incus-compose](https://github.com/lxc/incus-compose)) for web applications.
 
 ## Features
 
 - **Network Management**: Create and manage Nebula VPN networks
 - **Host Management**: Create and connect hosts to networks
-- **App Deployment**: Deploy Docker containers via the app store
+- **App Deployment**: Deploy OCI containers (Incus + incus-compose) via the app store
 - **Internal DNS**: Unbound-based internal DNS resolution
 
 ## Architecture
@@ -15,24 +15,30 @@ Cep consists of four components:
 
 | Component | Port | Description |
 |-----------|------|------------|
-| cep-main | 8000 | FastAPI server - network/host/storage/DNS management |
-| cep-appstore | 8000 | FastAPI server - Docker container deployment |
+| cep-main | 8000 | FastAPI server - network/host/DNS management |
+| cep-appstore | 8000 | FastAPI server - OCI container deployment via incus-compose |
 | cep-client | - | Nebula peer connecting to VPN network |
 | cep-dns | 8053 | Unbound DNS for internal resolution |
 
 ## Quick Start
 
-### Docker (Recommended)
+### Incus (Recommended)
+
+Requires an incus host - daemon listening on `core.https_address :8443`,
+an `incusbr0` bridge at 10.0.100.1/24 and a preseeded default
+profile/pool - provisioned from a separate host repo, and `nix` for the
+image build:
 
 ```bash
 cp .env.example .env
 # Make sure to set LIGHTHOUSE_STABLE_IP
 
-uv sync
-uv pip install -e .
+# Build the nix OCI image (Entrypoint = cep) and import it into the
+# incus-compose image cache:
+./image/build.sh
 
-docker build . -t cep:latest
-docker compose up -d
+# Start the stack (caddy + cep-main + cep-appstore):
+make deploy
 
 uv run cep network list
 ```
@@ -48,7 +54,8 @@ uv sync
 uv run cep server run
 ```
 
-**Terminal 2** - App store (requires docker.sock):
+**Terminal 2** - App store (talks to the host incus daemon; see
+`scripts/register-appstore-client.sh` for the trust-token registration):
 ```bash
 uv sync
 uv run cep apps run
@@ -123,12 +130,12 @@ uv run cep dns remove <name>     # Remove DNS record
 A lighthouse is a host with a stable public IP that coordinates connections between hosts behind NAT. It enables UDP hole punching for peer-to-peer connectivity.
 
 - The first host in a network must be a lighthouse
-- In Docker deployment, the server itself acts as the lighthouse
+- In the incus deployment, the server itself acts as the lighthouse
 - For connectivity outside your home network, run a lighthouse on a public VPS with a stable IP
 
 ## Security Considerations
 
-- The app store requires access to the Docker socket (`/var/run/docker.sock`) - this is a known privilege escalation vector
+- The app store gets its own incus client certificate and talks to the host incus daemon over HTTPS (`scripts/register-appstore-client.sh`) - it can deploy arbitrary containers, so treat the appstore instance with the same care as a docker.sock mount
 - Token-based authentication is used between components
 - In production, isolate the app store in its own security context
 
@@ -155,28 +162,24 @@ uv run pytest
 uv run pytest --cov=cep --cov-report=term-missing
 
 # Run a specific file or test
-uv run pytest tests/test_server_network.py
-uv run pytest tests/test_cli_host.py::TestHostCreate
+uv run pytest tests/test_network_endpoints.py
+uv run pytest tests/test_host_endpoints.py::TestHostCreate
 ```
 
 ### Test structure
 
 | File | What is tested |
 |------|----------------|
-| `tests/conftest.py` | Shared fixtures (isolated DB, mocked DNS, TestClient, CliRunner) |
-| `tests/test_datamodels.py` | Pydantic model validation and serialization roundtrips |
-| `tests/test_utils.py` | `parse_stdout`, `get_platform`, `extract_archive`, `get_template_path` |
-| `tests/test_storage_docker.py` | `Pool` / `Volume` filesystem operations and error handling |
-| `tests/test_server_utils.py` | Network and storage DB load/save roundtrips |
-| `tests/test_server_network.py` | `/network` router via FastAPI `TestClient` |
-| `tests/test_server_host.py` | `/host` router via FastAPI `TestClient` |
-| `tests/test_apps_docker.py` | `ComposeConfig` and `Docker` class methods (templates, deployment file management) |
-| `tests/test_appstore_server.py` | Appstore FastAPI routes (`/health`, `/list`, `/deploy`, `/clear`, etc.) |
-| `tests/test_cli_bundle.py` | `CepBundle` metadata generation and `.cepbundle` zip artifact structure |
-| `tests/test_cli_dns.py` | `NebulaDNS` helpers and `dns` CLI commands |
-| `tests/test_cli_network.py` | `network` CLI commands via Typer `CliRunner` |
-| `tests/test_cli_host.py` | `host` CLI commands via Typer `CliRunner` |
-| `tests/test_cli_apps.py` | `apps deploy/list/store/targeted-destroy/clear` CLI commands |
-| `tests/test_cli_storage.py` | `storage pool` and `storage volume` CLI commands |
+| `tests/conftest.py` | Shared fixtures (isolated DB, mocked DNS/CA, TestClient, CliRunner, appstore/reverse-proxy stubs) |
+| `tests/test_apps_endpoints.py` | `/apps` deploy/destroy proxy endpoints (mocked appstore, reverse proxy and DNS) |
+| `tests/test_caddy.py` | Caddy wrapper config helpers + idempotent startup init (mocked HTTP) |
+| `tests/test_cli_apps.py` | `apps deploy` / `apps targeted-destroy` parameter forwarding |
+| `tests/test_docker.py` | `ComposeConfig` load/save + `Docker` deployment-file management |
+| `tests/test_host_endpoints.py` | `/host` endpoints (create, delete, show, sign) |
+| `tests/test_network_endpoints.py` | `/network` endpoints (delete, show, lighthouses) |
+| `tests/test_network_helpers.py` | `generate_ula_prefix`, `create_ca` |
+| `tests/test_network_record_serializers.py` | `NetworkRecord` subnet serializer/deserializer roundtrips, `get_cep` |
+| `tests/test_server_db.py` | Server DB load/save roundtrips, `AppRecord` persistence |
+| `tests/test_utils.py` | `get_platform`, `extract_archive`, `download_nebula`, `get_executable_path`, `get_template_path`, `parse_stdout` |
 
 > **Note:** `CEP_SERVER_TOKEN` is automatically cleared during server tests so the test client does not need auth credentials.
