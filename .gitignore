@@ -24,4 +24,3 @@ wheels/
 
 # Image symlinks (nix multi-output builds also produce result-man etc.)
 image/result*
-nix/result

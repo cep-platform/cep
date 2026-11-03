@@ -24,8 +24,10 @@ Cep consists of four components:
 
 ### Incus (Recommended)
 
-Requires a host with `nix` and `incus` (the daemon listening on
-`core.https_address :8443`; see `nix/` for the host flake):
+Requires an incus host - daemon listening on `core.https_address :8443`,
+an `incusbr0` bridge at 10.0.100.1/24 and a preseeded default
+profile/pool - provisioned from a separate host repo, and `nix` for the
+image build:
 
 ```bash
 cp .env.example .env

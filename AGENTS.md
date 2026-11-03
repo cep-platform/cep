@@ -77,9 +77,6 @@ image/           OCI image flake: image.nix (nix2container image, Entrypoint
                  = cep), flake.nix, build.sh (build + import into the
                  incus-compose cache), incusify.py (OCI layout -> incus
                  split tarballs).
-nix/             NixOS host flake (nixosConfigurations.incus: incus preseed,
-                 core.https_address :8443, firewall). Rebuild with
-                 `nixos-rebuild switch --flake ./nix#incus --impure`.
 tests/           Pytest suite (see Testing rules).
 unbound/         cep-dns: unbound config + FastAPI control API.
 startupscripts/  Client container entrypoints.
@@ -116,7 +113,7 @@ startupscripts/  Client container entrypoints.
 | DNS_TOKEN            | main / dns         | Passed to cep-dns; auth removed for now |
 | LIGHTHOUSE_STABLE_IP | client / server    | Public IP of lighthouse  |
 | DNS_IP               | main               | DNS server IP            |
-| INCUS_COMPOSE_HEALTHD_INCUS | make (incus-compose) | https URL the ic-healthd sidecar uses to reach the incus daemon; required because core.https_address is ":8443" (all interfaces) and make talks to the daemon over the unix socket, so incus-compose cannot auto-derive a dial target. Default: the preseeded incusbr0 address, https://10.0.100.1:8443 (nix/modules/incus.nix; port 8443 is open in nix/modules/networking.nix). Without it, healthd creation fails and `up` aborts. |
+| INCUS_COMPOSE_HEALTHD_INCUS | make (incus-compose) | https URL the ic-healthd sidecar uses to reach the incus daemon; required because core.https_address is ":8443" (all interfaces) and make talks to the daemon over the unix socket, so incus-compose cannot auto-derive a dial target. Default: the incus bridge address, https://10.0.100.1:8443 (the host - daemon listener, incusbr0 10.0.100.1/24, preseeded profile/pool - is provisioned from a separate host repo). Without it, healthd creation fails and `up` aborts. |
 | CEP_SQLITE_SYNC      | main               | SQLite `synchronous` pragma
                                           (OFF/NORMAL/FULL, default NORMAL;
                                           the WAL conversion of a fresh db
