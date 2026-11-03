@@ -1,8 +1,7 @@
 include .env
 export
 
-.PHONY: deploy build up dev-up dev dev-trust log trust dns-up dns-down host-extras \
-        healthd-pause healthd-resume healthd-quiesce
+.PHONY: deploy build up dev-up dev dev-trust log trust dns-up dns-down host-extras
 
 deploy: trust
 
@@ -23,13 +22,11 @@ trust: up
 up:
 	cat startupscripts/client_banner.txt
 	incus-compose up -d
-	$(MAKE) healthd-resume
 	$(MAKE) host-extras
 
 dev-up:
 	cat startupscripts/client_banner.txt
 	incus-compose -f compose.yml -f compose.dev.yml up -d
-	$(MAKE) healthd-resume
 	$(MAKE) host-extras
 
 dev-trust: dev-up
@@ -60,44 +57,6 @@ dns-up:
 dns-down:
 	docker rm -f cep-dns
 
-# down pauses the shared health daemon first: ic-healthd busy-loops on stopped
-# instances that still carry a healthcheck (see ~/ic-healthd-hotloop.md).
-down: healthd-pause dns-down
+down: dns-down
 	incus-compose down
 	pkill nebula
-
-# --- ic-healthd hot-loop workaround (~/ic-healthd-hotloop.md) -------------
-#TODO: drop this whole section once the ic-healthd scheduler fix is merged;
-# not meant to stay on main.
-# Until the scheduler fix is merged and deployed:
-#   make healthd-pause    stop the daemon entirely (checks/restarts off)
-#   make healthd-quiesce  surgical: strip checks from *stopped* instances only
-#   make healthd-resume   restore the daemon (make up / dev-up do it too)
-
-healthd-pause:
-	@if incus info ic-healthd --project incus-compose | grep -q "Status: RUNNING"; then \
-		echo "Pausing ic-healthd: health checks and auto-restarts are OFF"; \
-		incus stop ic-healthd --project incus-compose; \
-	else \
-		echo "ic-healthd is not running"; \
-	fi
-
-healthd-resume:
-	@if incus info ic-healthd --project incus-compose | grep -q "Status: STOPPED"; then \
-		echo "Resuming ic-healthd"; \
-		incus start ic-healthd --project incus-compose; \
-	else \
-		echo "ic-healthd already running"; \
-	fi
-
-# Drops the healthcheck from every stopped instance that still carries one.
-# incus-compose up re-applies the config from compose.yml, so starting the
-# stack restores the checks. Running instances (caddy) keep theirs.
-healthd-quiesce:
-	@incus list --all-projects --format json | jq -r \
-		'.[] | select((.status|ascii_downcase)=="stopped" and ((.config["user.healthcheck.test"] // "")!="")) | "\(.project) \(.name)"' \
-		| while read -r project instance; do \
-			echo "Quiescing $$instance (project $$project): unsetting user.healthcheck.test"; \
-			incus config unset "$$instance" user.healthcheck.test --project "$$project"; \
-		done
-	@echo "Stopped instances no longer carry a healthcheck."
