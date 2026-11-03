@@ -56,8 +56,9 @@ src/cep/
   cli/           Typer CLI. main.py registers sub-apps: network, host,
                  server, dns, apps. New commands: own module +
                  register in cli/main.py.
-  server/        cep-main FastAPI app. main.py builds app with bearer-token
-                 auth; routers: network, host, apps, dns.
+  server/        cep-main FastAPI app. main.py builds the app (app-level
+                 auth removed for now - do not re-add token wiring ad hoc);
+                 routers: network, host, apps, dns.
                  Persistence is SQLite (db.sqlite3, WAL) in the user data
                  dir; owned by server/db.py: mutating endpoints run in a
                  BEGIN IMMEDIATE transaction per request via
@@ -110,9 +111,9 @@ startupscripts/  Client container entrypoints.
 
 | Variable             | Used by            | Purpose                  |
 |----------------------|--------------------|--------------------------|
-| CEP_SERVER_TOKEN     | main server/client | Bearer token auth        |
+| CEP_SERVER_TOKEN     | client             | Bearer header sent by the client; ignored by the server for now |
 | CEP_SERVER_URL       | client             | URL of cep-main          |
-| DNS_TOKEN            | main / dns         | DNS API auth             |
+| DNS_TOKEN            | main / dns         | Passed to cep-dns; auth removed for now |
 | LIGHTHOUSE_STABLE_IP | client / server    | Public IP of lighthouse  |
 | DNS_IP               | main               | DNS server IP            |
 | INCUS_COMPOSE_HEALTHD_INCUS | make (incus-compose) | https URL the ic-healthd sidecar uses to reach the incus daemon; required because core.https_address is ":8443" (all interfaces) and make talks to the daemon over the unix socket, so incus-compose cannot auto-derive a dial target. Default: the preseeded incusbr0 address, https://10.0.100.1:8443 (nix/modules/incus.nix; port 8443 is open in nix/modules/networking.nix). Without it, healthd creation fails and `up` aborts. |

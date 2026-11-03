@@ -1,5 +1,5 @@
 #!/bin/sh
-# Generate the certs on the 
+# Generate the client certificate used to talk to the incus daemon
 incus remote generate-certificate 2>/dev/null
 
 TOKEN=$(incus config trust add cep-appstore | tail -1)

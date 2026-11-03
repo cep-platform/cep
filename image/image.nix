@@ -42,19 +42,16 @@ let
     '';
   };
 
-  # The cep package itself. Dependencies come from the flake's nixpkgs input
-  # (nixos-26.05), not from uv.lock; buildPythonApplication does not enforce
-  # the pyproject minimums, so if these lag behind pyproject.toml and the
-  # smoke tests still pass (nix build ./image#cep && ./result/bin/cep --help),
-  # the pins are advisory. Switch to uv2nix if real divergence shows up.
-  #
-  # fastapi[standard] in pyproject.toml pulls uvicorn/httpx as extras;
-  # buildPythonApplication does not resolve extras, so list them explicitly.
-  # watchfiles: cli/server.py starts uvicorn with reload=True (dev-only flag)
-  # and reload requires it.
+  # The cep package itself. Version comes from pyproject.toml (single source
+  # of truth). Dependencies come from the flake's nixpkgs input (nixos-26.05),
+  # not from uv.lock; buildPythonApplication neither enforces the pyproject
+  # minimums nor resolves extras, so uvicorn/httpx are listed explicitly and
+  # watchfiles is included for cli/server.py's dev-only uvicorn reload.
+  #TODO: investigate the nixpkgs <-> uv interplay; switch to uv2nix if the
+  # two dependency sets diverge
   cep = py.buildPythonApplication rec {
     pname = "cep";
-    version = "0.1.0";
+    version = (builtins.fromTOML (builtins.readFile "${repoRoot}/pyproject.toml")).project.version;
     pyproject = true;
     # The whole tracked git tree. Uncommitted files are invisible to the
     # build - `git add` new files before rebuilding.
@@ -116,10 +113,11 @@ let
     pathsToLink = [ "/bin" ];
   };
 
-  # Non-package trees: working dirs and the startup script. These need to be
-  # writable at runtime - store paths are 0555, so create dirs with 0755
-  # (container-root writes via DAC_OVERRIDE into 0555 store dirs would work,
-  # but let's not rely on that).
+  # Non-package trees: working dirs and the startup script. Store paths are
+  # 0555, so create the runtime-writable dirs with 0755.
+  #TODO: this wiring only exists because dependencies are managed through
+  # nix; managing everything with uv may be simpler for dev. Revisit when
+  # this becomes a flashable/immutable image.
   runtime-tree = pkgs.runCommand "cep-runtime-tree" { } ''
     install -d -m 0755 $out/app
     install -d -m 0755 $out/root/.cache/nebula
@@ -133,13 +131,7 @@ let
     install -m 0644 ${repoRoot}/startupscripts/client_banner.txt $out/app/client_banner.txt
   '';
 
-  # Distroless rootfs has no /etc/ssl: the static pure-Go incus-compose
-  # binary (CGO_ENABLED=0) reads the standard system cert paths, gets an
-  # empty trust pool, and every HTTPS fetch fails with "x509: certificate
-  # signed by unknown authority" (docker.io pulls; also curl/wget, whose
-  # nixpkgs builds bake in the same default path). Materialize the nixpkgs
-  # CA bundle at the standard path - NixOS hosts get this for free via
-  # security.pki, the image has to roll it by hand.
+  # Distroless rootfs has no /etc/ssl: the image has to roll it by hand.
   etc-ssl = pkgs.runCommand "cep-etc-ssl" { } ''
     install -d -m 0755 $out/etc/ssl/certs
     ln -s ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-certificates.crt

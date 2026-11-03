@@ -67,6 +67,8 @@ down: healthd-pause dns-down
 	pkill nebula
 
 # --- ic-healthd hot-loop workaround (~/ic-healthd-hotloop.md) -------------
+#TODO: drop this whole section once the ic-healthd scheduler fix is merged;
+# not meant to stay on main.
 # Until the scheduler fix is merged and deployed:
 #   make healthd-pause    stop the daemon entirely (checks/restarts off)
 #   make healthd-quiesce  surgical: strip checks from *stopped* instances only

@@ -18,6 +18,8 @@ CADDY_INIT_ATTEMPTS = 3
 CADDY_INIT_RETRY_DELAY = 9.0
 
 
+#TODO: ensure_caddy should be implemented through incus-compose rather than
+# being part of the application logic
 def _init_caddy_with_retry() -> None:
     for attempt in range(1, CADDY_INIT_ATTEMPTS + 1):
         try:
@@ -124,11 +126,10 @@ async def install_app(
         background_tasks: BackgroundTasks,
         ) -> AppInstallAccepted:
     """
-    Async install: validate the template synchronously (fast 404 for an
-    unknown app), then run the slow incus-compose deployment in a
-    background task. Returns 202 + job_id immediately; poll
-    GET /jobs/{job_id} until state is done (result = app template) or
-    failed (error = reason).
+    Non-blocking install: validate the template synchronously (fast 404 for
+    an unknown app), run the incus-compose deployment as a background job
+    and return 202 + job_id immediately; poll GET /jobs/{job_id} for the
+    outcome.
     """
     try:
         app_template = Incus.get_app_template(request.id)

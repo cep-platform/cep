@@ -15,9 +15,7 @@ services:
     restart: unless-stopped
 
 networks:
-  # The stack's shared bridge (name pinned in compose.yml). caddy dials
-  # deployed apps by instance name, so they must join this exact network.
-  # external: app deployments never create or delete it.
+  #TODO: temporary fix until more coherent networking is designed for cep
   cep:
     name: cep
     external: true

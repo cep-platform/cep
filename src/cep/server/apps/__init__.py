@@ -30,10 +30,8 @@ client = httpx.Client(base_url=f"http://{hostname}:8080")
 
 LOGGER = logging.getLogger(__name__)
 
-# Poll cadence for appstore install jobs. Every single HTTP call is short
-# (the appstore answers instantly); what is slow is the incus-compose work
-# behind the job. Keep the CLI deploy timeout above DEPLOY_POLL_TIMEOUT so
-# the server's actionable 504 beats the client's read timeout.
+# Poll cadence for appstore install jobs; the CLI's deploy timeout stays
+# above DEPLOY_POLL_TIMEOUT so the server's 504 beats the client timeout.
 DEPLOY_POLL_INTERVAL = 2.0
 DEPLOY_POLL_TIMEOUT = 600.0
 
