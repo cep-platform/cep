@@ -13,7 +13,10 @@ deployProxy:
 - 502 when the appstore job reports the deploy as failed; nothing wired
 - 504 when the job is still running after the poll timeout; nothing wired
 - 500 when the job result lacks container_name / proxy-port label
-- 500 when the job result defines more than one service
+- 500 when the job result has more than one routed service
+- Image refs and user compose files deploy under their resolved name;
+  the 409 check uses that name
+- 422 for a request that cannot be rendered; nothing reaches the appstore
 - 502 when the reverse proxy is unreachable
 
 targetedDestroyProxy:
@@ -92,13 +95,17 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 200
-        assert mock_appstore.deploy_calls == [
-            ("/", None, {"id": "redis", "config": {}})
-        ]
+        [(path, _, install)] = mock_appstore.deploy_calls
+        assert path == "/"
+        assert install["id"] == "redis"
+        assert install["compose"]["services"]["redis"]["image"] == "redis:7-alpine", (
+            "the preset is rendered to compose before it reaches the appstore"
+        )
         assert mock_appstore.poll_calls == [("/jobs/job-1", None)], (
             "deploy must poll the job until done"
         )
@@ -119,7 +126,8 @@ class TestDeployProxy:
     ):
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "ghost"},
+            params={"network_name": "ghost"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 404
@@ -135,7 +143,8 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 409
@@ -149,7 +158,8 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 409
@@ -168,7 +178,8 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 404
@@ -191,11 +202,12 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 500
-        assert "container_name" in resp.json()["detail"]
+        assert "cep.proxy.port" in resp.json()["detail"]
         assert mock_rproxy.added == []
         assert load_db().networks["testnet"].apps == {}
 
@@ -225,11 +237,84 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 500
         assert "exactly one service" in resp.json()["detail"]
+
+    def test_deploys_an_image_ref_under_the_derived_name(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _dns_recorder(monkeypatch, [])
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "ghcr.io/foo/whoami:1", "ports": [{"host": 8000, "container": 80}]},
+        )
+
+        assert resp.status_code == 200
+        [(_, _, install)] = mock_appstore.deploy_calls
+        assert install["id"] == "whoami"
+        assert install["compose"]["services"]["whoami"]["labels"]["cep.proxy.port"] == "80"
+        assert "whoami" in load_db().networks["testnet"].apps
+
+    def test_deploys_a_user_compose_file(
+        self, api, server_dir, mock_appstore, mock_rproxy, monkeypatch
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _dns_recorder(monkeypatch, [])
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"compose": {"services": {"web": {"image": "nginx"}}}, "proxy_port": 80},
+        )
+
+        assert resp.status_code == 200
+        [(_, _, install)] = mock_appstore.deploy_calls
+        web = install["compose"]["services"]["web"]
+        assert install["id"] == "web"
+        assert web["container_name"] == "cep-app-web"
+        assert install["compose"]["networks"]["cep"] == {"name": "cep", "external": True}
+
+    def test_409_uses_the_resolved_app_name(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        """The python preset deploys as python-app; that is the name to check."""
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+        _seed_deployed_app(app_name="python-app")
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"target": "python"},
+        )
+
+        assert resp.status_code == 409
+        assert mock_appstore.deploy_calls == []
+
+    @pytest.mark.parametrize("body", [
+        {},
+        {"target": "ghcr.io/foo/My_App"},
+        {"compose": {"services": {"web": {"image": "nginx"}}}},
+    ])
+    def test_returns_422_for_an_undeployable_request(
+        self, api, server_dir, mock_appstore, mock_rproxy, body
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+
+        resp = api.post("/apps/deployProxy", params={"network_name": "testnet"}, json=body)
+
+        assert resp.status_code == 422
+        assert mock_appstore.deploy_calls == []
 
     def test_returns_502_when_rproxy_unreachable(
         self, api, server_dir, mock_appstore, mock_rproxy
@@ -240,7 +325,8 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 502
@@ -255,7 +341,8 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 502
@@ -272,7 +359,8 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 502
@@ -299,7 +387,8 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 502
@@ -324,7 +413,8 @@ class TestDeployProxy:
 
         resp = api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
 
         assert resp.status_code == 504
@@ -370,7 +460,8 @@ class TestTargetedDestroyProxy:
 
         api.post(
             "/apps/deployProxy",
-            params={"name": "redis", "network_name": "testnet"},
+            params={"network_name": "testnet"},
+            json={"target": "redis"},
         )
         api.delete(
             "/apps/targetedDestroyProxy",

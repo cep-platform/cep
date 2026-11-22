@@ -1,0 +1,10 @@
+name: postgres
+image: postgres:15-alpine
+env:
+  POSTGRES_USER: myuser
+  POSTGRES_PASSWORD: mypassword
+  POSTGRES_DB: mydb
+ports:
+  - {host: 5432, container: 5432}
+mounts:
+  - {source: postgres-data, target: /var/lib/postgresql/data}

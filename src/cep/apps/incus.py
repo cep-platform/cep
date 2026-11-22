@@ -1,7 +1,6 @@
 import os
 import shutil
 import subprocess
-from importlib import resources
 from pathlib import Path
 from typing import Dict, List
 import json
@@ -15,8 +14,6 @@ from rich import print  # noqa
 
 APP_STORE_DATA_DIR = DATA_DIR / 'apps'
 APP_STORE_DATA_DIR.mkdir(exist_ok=True)
-
-APP_TEMPLATES_PATH = "cep.apps.app_templates"
 
 PROXY_PORT_LABEL = "cep.proxy.port"
 
@@ -64,25 +61,6 @@ class ComposeConfig(BaseModel):
 
 class Incus():
 
-    @staticmethod
-    def get_app_template(name) -> ComposeConfig:
-        with resources.as_file(
-                resources.files(APP_TEMPLATES_PATH).joinpath(f"{name}.yml")
-                ) as template_path:
-
-            path = Path(template_path)
-            if path.exists():
-                with open(path, 'r') as f:
-                    config = yaml.safe_load(f)
-                    compose_config = ComposeConfig(**config)
-                    return compose_config
-
-            msg = "\n".join([
-                f"App {name} not found in template path {path.parent}",
-                f"Available apps are {Incus.list_available_apps()}",
-                ])
-            raise ValueError(msg)
-
     #TODO: test_this: validate templates
     @staticmethod
     def add_to_deployment(app_id: str, app_config: ComposeConfig):
@@ -102,12 +80,6 @@ class Incus():
                 "No deployment directory for app '%s'; nothing to remove",
                 app_id,
             )
-
-    @staticmethod
-    def list_available_apps() -> list[str]:
-        templates = resources.files(APP_TEMPLATES_PATH)
-
-        return [entry.name.split('.')[0] for entry in templates.iterdir()]
 
     @staticmethod
     def compose_up(app_id):

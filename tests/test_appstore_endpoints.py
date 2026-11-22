@@ -4,14 +4,13 @@ Tests for the appstore app's own HTTP API (cep.apps.main).
 These pin the contract that cep-main's /apps proxy consumes
 (src/cep/server/apps/__init__.py):
 
-- POST / with an AppInstallRequest JSON body accepts the install job
-  and returns 202 + job_id; the template (services with
+- POST / with an AppInstallRequest JSON body ({id, compose}) accepts the
+  install job and returns 202 + job_id; the compose file (services with
   container_name/labels) arrives via the job's result
 - GET /jobs/{job_id} reports the job state; done carries the template,
   failed carries the error. 404 for an unknown job id
-- POST / with an unknown template id 404s synchronously with an
-  actionable detail (template dir + available apps) and never creates
-  a job
+- POST / with an invalid app id or compose file 422s synchronously and
+  never creates a job (presets are rendered by cep-main, cep.apps.compose)
 - GET / lists deployed apps (raw incus JSON passthrough)
 - GET /{app_id} returns app info
 - DELETE /{app_id} tears the app down - 204 (still synchronous; the job
@@ -30,37 +29,28 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from cep.apps.incus import ComposeConfig, Incus
+from cep.apps.incus import Incus
 from cep.apps.main import JOBS, app as appstore_app
 
-REDIS_TEMPLATE = ComposeConfig(
-    services={
+REDIS_COMPOSE = {
+    "services": {
         "redis": {
             "container_name": "cep-app-redis",
             "labels": {"cep.proxy.port": "6379"},
         }
     }
-)
+}
+INSTALL_REDIS = {"id": "redis", "compose": REDIS_COMPOSE}
 
 
 class FakeIncus:
     """Records Incus calls made by the appstore; returns canned data."""
 
     def __init__(self):
-        self.template = REDIS_TEMPLATE
         self.listed = [{"name": "cep-app-redis", "status": "Running"}]
         self.info_data = [{"name": "cep-app-redis", "status": "Running"}]
         self.compose_up_error: Exception | None = None
         self.calls: list[str] = []
-
-    def get_app_template(self, name):
-        self.calls.append(f"get_app_template:{name}")
-        if self.template is None:
-            raise ValueError(
-                f"App {name} not found in template path /templates "
-                "Available apps are ['redis']"
-            )
-        return self.template
 
     def add_to_deployment(self, app_id, app_config):
         self.calls.append(f"add_to_deployment:{app_id}")
@@ -88,7 +78,6 @@ class FakeIncus:
 def fake_incus(monkeypatch: pytest.MonkeyPatch) -> FakeIncus:
     fake = FakeIncus()
     for attr in (
-        "get_app_template",
         "add_to_deployment",
         "remove_from_deployment",
         "compose_up",
@@ -112,10 +101,10 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 class TestInstallApp:
     def test_post_root_accepts_job_and_completes_it(self, client, fake_incus):
         """POST / returns 202 + job_id immediately; the job body carries
-        the template once done. TestClient runs background tasks to
+        the compose file once done. TestClient runs background tasks to
         completion before returning, so the job is already done here -
         in production the 202 leaves long before the deploy finishes."""
-        resp = client.post("/", json={"id": "redis", "config": {}})
+        resp = client.post("/", json=INSTALL_REDIS)
 
         assert resp.status_code == 202
         body = resp.json()
@@ -130,23 +119,20 @@ class TestInstallApp:
             "cep-app-redis"
         )
         assert fake_incus.calls == [
-            "get_app_template:redis",
             "add_to_deployment:redis",
             "compose_up:redis",
         ]
 
-    def test_post_root_with_unknown_app_404s_with_available_apps(
-        self, client, fake_incus
-    ):
-        """Unknown apps fail fast and synchronously: no job is created."""
-        fake_incus.template = None
+    @pytest.mark.parametrize("body", [
+        {"id": "../etc", "compose": REDIS_COMPOSE},  # id becomes a deployment dir
+        {"id": "redis", "compose": {"services": "nope"}},
+    ])
+    def test_post_root_with_invalid_request_422s(self, client, fake_incus, body):
+        """Bad input fails fast and synchronously: no job is created."""
+        resp = client.post("/", json=body)
 
-        resp = client.post("/", json={"id": "mongo", "config": {}})
-
-        assert resp.status_code == 404
-        assert "not found" in resp.json()["detail"]
-        assert "redis" in resp.json()["detail"], "detail must list available apps"
-        assert fake_incus.calls == ["get_app_template:mongo"]
+        assert resp.status_code == 422
+        assert fake_incus.calls == []
         assert JOBS == {}, "a rejected install must not leave a job behind"
 
 
@@ -158,7 +144,7 @@ class TestInstallJob:
             "incus-compose up failed: no space left on device"
         )
 
-        resp = client.post("/", json={"id": "redis", "config": {}})
+        resp = client.post("/", json=INSTALL_REDIS)
 
         assert resp.status_code == 202
         job = client.get(f"/jobs/{resp.json()['job_id']}")
@@ -168,7 +154,6 @@ class TestInstallJob:
         assert "no space left on device" in job_body["error"]
         assert job_body["result"] is None
         assert fake_incus.calls == [
-            "get_app_template:redis",
             "add_to_deployment:redis",
             "compose_up:redis",  # recorded before the error raised
         ]

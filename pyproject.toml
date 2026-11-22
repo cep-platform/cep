@@ -31,7 +31,7 @@ dev = [
 cep = "cep.cli.main:app"
 
 [tool.setuptools.package-data]
-cep = ["templates/*.yaml", "apps/app_templates/*.yaml"]
+cep = ["templates/*.yaml", "apps/presets/*.yml"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

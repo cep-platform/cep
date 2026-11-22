@@ -11,7 +11,9 @@ import requests
 
 from cep.apps.main import AppInstallRequest
 from cep.apps.caddy import CaddyReverseProxy
+from cep.apps.compose import render, routed_service
 from cep.apps.incus import PROXY_PORT_LABEL
+from cep.apps.spec import DeployRequest, InvalidSpec
 from cep.datamodels import AppRecord, AddAAAARequest, HostRecord, NetworkStore
 from cep.server.apps.store import store_router
 from cep.server.dns import add_host_to_dns, remove_host_from_dns
@@ -48,16 +50,10 @@ def _appstore_error(resp: httpx.Response, fallback: str) -> HTTPException:
 
 
 def _deployed_service(template: dict, name: str) -> dict:
-    services = template.get("services", {})
-    if len(services) != 1:
-        raise HTTPException(
-                status_code=500,
-                detail=(
-                    f"App template '{name}' must define exactly one service, "
-                    f"got {len(services)}"
-                    ),
-                )
-    return next(iter(services.values()))
+    try:
+        return routed_service(template)
+    except InvalidSpec as e:
+        raise HTTPException(status_code=500, detail=f"App '{name}': {e}")
 
 
 def _poll_appstore_job(job_id: str, name: str) -> dict:
@@ -136,16 +132,22 @@ def _finalize_deploy(
 
 
 @apps_router.post("/deployProxy")
-def deploy(name: str,
-           network_name: str,
+def deploy(network_name: str,
+           request: DeployRequest,
            network_store: NetworkStore = Depends(get_network_store),
            ):
     """
-    Deploy an app on the network's cep host via the appstore.
+    Deploy a preset, an image ref or a user compose file on the network's
+    cep host via the appstore. The request is rendered to compose here, so
+    the app name is known up front for the 409 check and the hostname.
 
     Read-only dependency on purpose (see _finalize_deploy): this request
     polls the appstore's install job for up to DEPLOY_POLL_TIMEOUT.
     """
+    try:
+        name, compose = render(request)
+    except InvalidSpec as e:
+        raise HTTPException(status_code=422, detail=str(e))
     LOGGER.debug(
         "deployProxy: deploying app %r on network %r (known networks: %s)",
         name,
@@ -183,7 +185,7 @@ def deploy(name: str,
                 )
     host_name = f"{name}.{cep.name}.{network_name}"
 
-    install_params = AppInstallRequest(id=name).model_dump()
+    install_params = AppInstallRequest(id=name, compose=compose).model_dump()
     LOGGER.debug(
         "deployProxy: appstore install: POST %s body=%s",
         client.base_url,
