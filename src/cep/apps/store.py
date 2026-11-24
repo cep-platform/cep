@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from cep.apps.incus import Incus
+from cep.apps.spec import list_presets
 
 store_router = APIRouter(prefix="/store")
 
@@ -12,4 +12,4 @@ def health():
 
 @store_router.get("/list")
 def _list() -> list[str]:
-    return Incus.list_available_apps()
+    return list_presets()
