@@ -148,6 +148,11 @@ startupscripts/  Client container entrypoints.
   the routed service's container_name/proxy-port label) into every
   compose it renders or adopts; `tests/test_apps_compose.py` and
   `tests/test_incus.py` guard the contract.
+- The shared bridge's DNS is one namespace for the stack and every
+  network's apps, and incus-compose publishes *service keys* there, not
+  just container names. Never use a user-chosen string as the routed
+  service key or container_name: derive them with
+  `cep.apps.compose.container_name`.
 - Image build: `image/build.sh` imports the nix-built image under
   `local/cep:latest` AND `local/cep:latest/amd64` in the
   `incus-compose-cache` project — incus-compose looks images up with the

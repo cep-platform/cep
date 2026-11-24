@@ -4,19 +4,36 @@ from __future__ import annotations
 
 import pytest
 
-from cep.apps.compose import CEP_NETWORK, adopt_compose, render, routed_service, to_compose
+from cep.apps.compose import (
+    CEP_NETWORK,
+    adopt_compose,
+    container_name,
+    render,
+    routed_service,
+    to_compose,
+)
 from cep.apps.incus import PROXY_PORT_LABEL
 from cep.apps.spec import AppSpec, DeployRequest, InvalidSpec, Mount, Port, list_presets, load_preset
+
+def test_service_key_is_the_instance_name():
+    """incus-compose publishes service keys as DNS records on the shared bridge."""
+    key = container_name("cep-caddy")
+    compose = to_compose(AppSpec(name="cep-caddy", image="evil", proxy_port=80))
+    assert list(compose["services"]) == [key]
+
+    _, compose = adopt_compose({"services": {"cep-caddy": {"image": "evil"}}}, proxy_port=80)
+    assert list(compose["services"]) == [key]
 
 
 def test_to_compose_renders_a_routed_service_on_the_shared_network():
     compose = to_compose(load_preset("redis"))
+    key = container_name("redis")
 
     assert compose == {
         "services": {
-            "redis": {
+            key: {
                 "image": "redis:7-alpine",
-                "container_name": "cep-app-redis",
+                "container_name": key,
                 "networks": ["cep"],
                 "labels": {"cep.app": "true", "cep.preset": "redis", PROXY_PORT_LABEL: "6379"},
                 "ports": ["6379:6379/tcp"],
@@ -51,7 +68,7 @@ def test_to_compose_optional_fields():
         proxy_port=80,
     )
     compose = to_compose(spec)
-    service = compose["services"]["web"]
+    service = compose["services"][container_name("web")]
 
     assert service["environment"] == {"K": "V"}
     assert service["volumes"] == ["/srv:/srv:ro"]
@@ -69,11 +86,12 @@ def test_to_compose_requires_a_route_port():
 
 def test_adopt_single_service_compose():
     name, compose = adopt_compose({"services": {"web": {"image": "nginx"}}}, proxy_port=80)
+    key = container_name("web")
 
     assert name == "web"
-    assert compose["services"]["web"] == {
+    assert compose["services"][key] == {
         "image": "nginx",
-        "container_name": "cep-app-web",
+        "container_name": key,
         "networks": ["cep"],
         "labels": {"cep.app": "true", PROXY_PORT_LABEL: "80"},
     }
@@ -85,7 +103,6 @@ def test_adopt_keeps_user_choices():
         "services": {
             "web": {
                 "image": "nginx",
-                "container_name": "my-web",
                 "labels": ["team=core", f"{PROXY_PORT_LABEL}=80"],
                 "networks": {"backend": {}},
             },
@@ -93,10 +110,9 @@ def test_adopt_keeps_user_choices():
         "networks": {"backend": {}},
     }
     name, compose = adopt_compose(user, name="site")
-    web = compose["services"]["web"]
+    web = compose["services"][container_name("site")]
 
     assert name == "site"
-    assert web["container_name"] == "my-web"
     assert web["labels"] == {"team": "core", PROXY_PORT_LABEL: "80", "cep.app": "true"}
     assert web["networks"] == {"backend": {}, "cep": {}}
     assert compose["networks"] == {"backend": {}, "cep": CEP_NETWORK}
@@ -112,7 +128,7 @@ def test_adopt_multi_service_routes_the_labelled_one():
     })
 
     assert name == "app"
-    assert routed_service(compose)["container_name"] == "cep-app-app"
+    assert routed_service(compose)["container_name"] == container_name("app")
     assert "container_name" not in compose["services"]["db"]
     assert compose["services"]["db"]["networks"] == ["cep"]
 
@@ -132,11 +148,64 @@ def test_adopt_rejects(compose, match):
         adopt_compose(compose)
 
 
+@pytest.mark.parametrize("depends_on,expected", [
+    (["app"], lambda key: [key]),
+    ({"app": {"condition": "service_started"}}, lambda key: {key: {"condition": "service_started"}}),
+])
+def test_adopt_keeps_depends_on_pointing_at_the_renamed_service(depends_on, expected):
+    _, compose = adopt_compose({"services": {
+        "app": {"image": "app", "labels": {PROXY_PORT_LABEL: "8000"}},
+        "worker": {"image": "app", "depends_on": depends_on},
+    }})
+    assert compose["services"]["worker"]["depends_on"] == expected(container_name("app"))
+
+
+@pytest.mark.parametrize("field", [
+    {"container_name": "cep-caddy"},
+    {"extends": {"file": "/elsewhere/compose.yml", "service": "x"}},
+    {"networks": {"cep": {"aliases": ["cep-caddy"]}}},
+    {"networks": {"cep": {"ipv4_address": "10.0.0.2"}}},
+])
+@pytest.mark.parametrize("target", ["app", "db"])
+def test_adopt_rejects_a_service_claiming_a_name(target, field):
+    services = {
+        "app": {"image": "app", "labels": {PROXY_PORT_LABEL: "8000"}},
+        "db": {"image": "postgres"},
+    }
+    services[target] |= field
+    with pytest.raises(InvalidSpec, match=next(iter(field))):
+        adopt_compose({"services": services})
+
+
+@pytest.mark.parametrize("key", ["cep-caddy", "CEP-main", "cep-app-web-0123", "incus"])
+def test_adopt_rejects_reserved_service_names(key):
+    """Unrouted services keep their key, and so their DNS record."""
+    with pytest.raises(InvalidSpec, match="reserved"):
+        adopt_compose({"services": {
+            "app": {"image": "app", "labels": {PROXY_PORT_LABEL: "8000"}},
+            key: {"image": "evil"},
+        }})
+
+
+@pytest.mark.parametrize("definition", [
+    {"name": "cep"},
+    {"external": True},
+    {"x-incus": {"raw.dnsmasq": "address=/cep-caddy/10.0.0.9"}},
+    {"x-incus-compose": {"network": "cep"}},
+])
+def test_adopt_rejects_a_network_reaching_outside_the_app(definition):
+    with pytest.raises(InvalidSpec, match=next(iter(definition))):
+        adopt_compose({
+            "services": {"app": {"image": "app", "networks": ["side"]}},
+            "networks": {"side": definition},
+        }, proxy_port=80)
+
+
 def test_render_preset_and_image_ref():
     assert render(DeployRequest(target="redis"))[0] == "redis"
     name, compose = render(DeployRequest(target="ghcr.io/foo/bar:1", ports=[Port(host=81, container=80)]))
     assert name == "bar"
-    assert compose["services"]["bar"]["image"] == "ghcr.io/foo/bar:1"
+    assert compose["services"][container_name("bar")]["image"] == "ghcr.io/foo/bar:1"
 
 
 def test_render_user_compose():

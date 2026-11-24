@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from cep.apps.compose import render
+from cep.apps.compose import container_name, render
 from cep.apps.incus import PROXY_PORT_LABEL, ComposeConfig, Incus
 from cep.apps.spec import DeployRequest
 
@@ -130,11 +130,12 @@ class TestRenderedAppDeployment:
 
     def test_routing_contract_survives_deployment(self, deployment_dir: Path):
         name, compose = render(DeployRequest(target="navidrome"))
+        key = container_name(name)
 
         Incus.add_to_deployment(name, ComposeConfig(**compose))
 
         result = ComposeConfig.load(deployment_dir / name / "compose.yml")
-        service = result.services["navidrome"]
+        service = result.services[key]
         assert service["labels"][PROXY_PORT_LABEL] == "4533"
-        assert service["container_name"] == "cep-app-navidrome"
+        assert service["container_name"] == key
         assert result.networks["cep"] == {"name": "cep", "external": True}

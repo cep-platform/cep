@@ -7,6 +7,11 @@ cep-main and caddy rely on (see AGENTS.md "Gotchas"):
 - exactly one *routed* service carries the PROXY_PORT_LABEL and a container_name,
   caddy dials `<container_name>:<proxy port>`;
 - every service joins the shared external `cep` bridge.
+
+That bridge is shared with the cep stack and every network's apps, and its DNS
+answers to instance names, service keys (incus-compose writes a record per key)
+and network aliases. So cep picks the routed service's name and key, and user
+files can't claim names there.
 """
 from __future__ import annotations
 
@@ -18,6 +23,8 @@ from cep.apps.spec import NAME_RE, AppSpec, DeployRequest, InvalidSpec, resolve
 
 CEP_NETWORK = {"name": "cep", "external": True}
 APP_LABEL = {"cep.app": "true"}
+# Keys that would let a compose network reach an existing bridge or its DNS.
+NETWORK_ESCAPES = ("name", "external", "x-incus", "x-incus-compose")
 
 
 def container_name(app: str) -> str:
@@ -29,9 +36,10 @@ def to_compose(spec: AppSpec) -> dict:
         raise InvalidSpec(f"app '{spec.name}' publishes no port; pass --proxy-port")
 
     preset = {"cep.preset": spec.preset} if spec.preset else {}
+    key = container_name(spec.name)
     service = {
         "image": spec.image,
-        "container_name": container_name(spec.name),
+        "container_name": key,
         "networks": ["cep"],
         "labels": {**APP_LABEL, **preset, PROXY_PORT_LABEL: str(spec.route_port)},
     }
@@ -46,7 +54,7 @@ def to_compose(spec: AppSpec) -> dict:
     service |= {k: v for k, v in optional.items() if v}
     service["restart"] = "unless-stopped" if spec.restart else "no"
 
-    compose = {"services": {spec.name: service}}
+    compose = {"services": {key: service}}
     if volumes := sorted({m.source for m in spec.mounts if m.is_volume}):
         compose["volumes"] = {v: {} for v in volumes}
     compose["networks"] = {"cep": CEP_NETWORK}
@@ -80,6 +88,41 @@ def routed_service(compose: dict) -> dict:
     return services[_routed(services, None)]
 
 
+def _reject_claimed_names(compose: dict, routed: str) -> None:
+    for key, service in compose["services"].items():
+        for field in ("container_name", "extends"):  # extends can import a container_name
+            if field in service:
+                raise InvalidSpec(f"service '{key}': {field} is not allowed, cep names app containers")
+
+        networks = service.get("networks")
+        if isinstance(networks, dict) and any(networks.values()):
+            raise InvalidSpec(
+                f"service '{key}': networks can't have options (aliases, ipv4_address, ...); "
+                "list the network names only"
+            )
+
+        # `incus` is the bridge's search domain, so its record would match every name.
+        if key != routed and (key.lower().startswith("cep-") or key.lower() == "incus"):
+            raise InvalidSpec(f"service name '{key}' is reserved; rename the service")
+
+    for key, definition in (compose.get("networks") or {}).items():
+        if key == "cep":  # always replaced with CEP_NETWORK
+            continue
+        for field in NETWORK_ESCAPES:
+            if field in (definition or {}):
+                raise InvalidSpec(f"network '{key}': {field} is not allowed, app networks are private")
+
+
+def _rename_service(services: dict, old: str, new: str) -> dict:
+    for service in services.values():
+        depends_on = service.get("depends_on")
+        if isinstance(depends_on, list):
+            service["depends_on"] = [new if d == old else d for d in depends_on]
+        elif isinstance(depends_on, dict):
+            service["depends_on"] = {new if d == old else d: v for d, v in depends_on.items()}
+    return {new if key == old else key: service for key, service in services.items()}
+
+
 def adopt_compose(compose: dict, name: str | None = None, proxy_port: int | None = None) -> tuple[str, dict]:
     """Apply the routing contract to a user compose file. Returns (app name, compose)."""
     compose = copy.deepcopy(compose)
@@ -91,13 +134,15 @@ def adopt_compose(compose: dict, name: str | None = None, proxy_port: int | None
     name = name or routed
     if not re.match(NAME_RE, name):
         raise InvalidSpec(f"app name '{name}' must match {NAME_RE}; pass --name")
+    _reject_claimed_names(compose, routed)
 
+    instance = container_name(name)
     for key, service in services.items():
         labels = _labels(service) | APP_LABEL
         if key == routed:
             if proxy_port is not None:
                 labels[PROXY_PORT_LABEL] = str(proxy_port)
-            service.setdefault("container_name", container_name(name))
+            service["container_name"] = instance
         service["labels"] = labels
 
         networks = service.get("networks") or []
@@ -107,6 +152,7 @@ def adopt_compose(compose: dict, name: str | None = None, proxy_port: int | None
             networks = [*networks, "cep"]
         service["networks"] = networks
 
+    compose["services"] = _rename_service(services, routed, instance)
     compose["networks"] = {**(compose.get("networks") or {}), "cep": CEP_NETWORK}
     return name, compose
 

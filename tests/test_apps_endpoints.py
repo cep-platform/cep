@@ -36,6 +36,7 @@ import httpx
 import pytest
 import requests
 
+from cep.apps.compose import container_name
 from cep.datamodels import AppRecord, HostRecord
 from cep.server.db import load_db, save_db
 from tests.conftest import FakeAppstoreResponse, seed_network
@@ -103,7 +104,8 @@ class TestDeployProxy:
         [(path, _, install)] = mock_appstore.deploy_calls
         assert path == "/"
         assert install["id"] == "redis"
-        assert install["compose"]["services"]["redis"]["image"] == "redis:7-alpine", (
+        service = container_name("redis")
+        assert install["compose"]["services"][service]["image"] == "redis:7-alpine", (
             "the preset is rendered to compose before it reaches the appstore"
         )
         assert mock_appstore.poll_calls == [("/jobs/job-1", None)], (
@@ -260,7 +262,8 @@ class TestDeployProxy:
         assert resp.status_code == 200
         [(_, _, install)] = mock_appstore.deploy_calls
         assert install["id"] == "whoami"
-        assert install["compose"]["services"]["whoami"]["labels"]["cep.proxy.port"] == "80"
+        service = container_name("whoami")
+        assert install["compose"]["services"][service]["labels"]["cep.proxy.port"] == "80"
         assert "whoami" in load_db().networks["testnet"].apps
 
     def test_deploys_a_user_compose_file(
@@ -278,10 +281,32 @@ class TestDeployProxy:
 
         assert resp.status_code == 200
         [(_, _, install)] = mock_appstore.deploy_calls
-        web = install["compose"]["services"]["web"]
+        key = container_name("web")
+        web = install["compose"]["services"][key]
         assert install["id"] == "web"
-        assert web["container_name"] == "cep-app-web"
+        assert web["container_name"] == key
         assert install["compose"]["networks"]["cep"] == {"name": "cep", "external": True}
+
+    def test_user_compose_cannot_route_to_a_stack_container(
+        self, api, server_dir, mock_appstore, mock_rproxy
+    ):
+        seed_network(server_dir, name="testnet")
+        _seed_cep_host()
+
+        resp = api.post(
+            "/apps/deployProxy",
+            params={"network_name": "testnet"},
+            json={"compose": {"services": {"x": {
+                "image": "nginx",
+                "container_name": "cep-caddy",
+                "labels": {"cep.proxy.port": "2019"},
+            }}}},
+        )
+
+        assert resp.status_code == 422
+        assert "container_name" in resp.json()["detail"]
+        assert mock_appstore.deploy_calls == []
+        assert mock_rproxy.added == []
 
     def test_409_uses_the_resolved_app_name(
         self, api, server_dir, mock_appstore, mock_rproxy

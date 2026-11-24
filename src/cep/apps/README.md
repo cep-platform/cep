@@ -30,8 +30,7 @@ so every deploy gets:
 
 - one **routed** service with the `cep.proxy.port` label. For presets and
   image refs this is `--proxy-port`, or the first `--port` by default.
-- a `container_name` for the routed service, `cep-app-<name>` unless your
-  compose file sets one.
+- a routed service whose key and `container_name` are both `cep-app-<name>`.
 - every service on the external `cep` network, plus the `cep.app=true`
   label (and `cep.preset=<name>` for presets).
 
@@ -40,6 +39,16 @@ carry the `cep.proxy.port` label (or pass `--proxy-port` for a single-service
 file). The app name defaults to the routed service's name (`--name` overrides
 it). `--port`, `--env`, `--volume` and `--privileged` don't combine with a
 compose file; edit the file instead.
+
+The `cep` bridge is shared with the stack and all apps, and its
+DNS answers to service keys, container names and aliases. In a compose file:
+
+- `container_name` and `extends` are rejected;
+- service `networks` take names only (no aliases or static addresses);
+- top-level networks can't set `name`, `external` or `x-incus*`;
+- service names `cep-*` and `incus` are reserved;
+- the routed service is renamed (`depends_on` follows), so other services
+  can't reach it by its original name.
 
 TODO for v0.2:
  - Better logging
